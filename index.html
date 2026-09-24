@@ -1348,7 +1348,10 @@ var          READ=['obtenerDashboardAdmin','obtenerUsuariosAdmin','obtenerPendie
           }else{
             url+='&data='+enc(args.length===1?args[0]:args);
           }
-          fetch(url)
+          var req=(prop==='leerListadoEscaneado')
+            ?fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:prop,key:AK,data:args[0]})})
+            :fetch(url);
+          req
             .then(function(r){return r.json();})
             .then(function(d){if(_s)_s(d);})
             .catch(function(e){if(_f)_f({message:String(e)});});
