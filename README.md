@@ -38,3 +38,11 @@ clasp push
 ### "Analizar con IA" (lectura de listado escaneado)
 
 Usa la API de Claude. Agrega la propiedad de script `ANTHROPIC_API_KEY` (Configuración del proyecto → Propiedades del script). Sin ella el botón muestra un error explicativo y el resto de la app funciona normal.
+
+## Publicación automática (GitHub Pages)
+
+Cada push a `main` publica `index.html` en GitHub Pages mediante `.github/workflows/deploy-pages.yml`, igual que en capturabox:
+
+https://alejomorales360-dev.github.io/so1-admin/
+
+La página llama al backend de Apps Script por `fetch`. Si cambias `Codigo.gs`, hay que volver a desplegarlo en Apps Script; los cambios en `index.html` se publican solos.
