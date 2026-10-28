@@ -58,10 +58,16 @@ function jsonOut(d){
 function doGet(e){
   const p=e&&e.parameter||{},action=p.action,key=p.key;
   if(!action){
+    // Cada repo (Puntajes / Admin / Tesorería) trae solo su index.html; si se pide
+    // ?page=admin|tesoreria y ese archivo no existe en este proyecto, se sirve index.
     const page=p.page||'index';
-    const titles={admin:'SO1 - Administrador',tesoreria:'SO1 - Tesoreria',index:'SO1 - Puntajes'};
-    const file=['admin','tesoreria'].includes(page)?page:'index';
-    return HtmlService.createHtmlOutputFromFile(file).setTitle(titles[file]||'SO1');
+    let out;
+    try{out=HtmlService.createHtmlOutputFromFile(['admin','tesoreria'].includes(page)?page:'index');}
+    catch(ex){out=HtmlService.createHtmlOutputFromFile('index');}
+    const t=/<title>([^<']*)<\/title>/i.exec(out.getContent());
+    return out.setTitle(t&&t[1].trim()?t[1].trim():'SO1')
+      .addMetaTag('viewport','width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   const AK='so1admin2026';
   const publicas=['obtenerPuntajePorRut','obtenerPuntajeCompletoSocio','actualizarDatosSocio','autenticarUsuario'];
@@ -137,6 +143,9 @@ function doGet(e){
       case 'editarEventoComision':     r=editarEventoComision(payload);    break;
       case 'eliminarEventoComision':   r=eliminarEventoComision(payload);  break;
       case 'importarPuntajeBaseMatriz': r=importarPuntajeBaseMatriz(payload); break;
+      case 'obtenerReglas':             r=obtenerReglas(); break;
+      case 'actualizarReglas':          r=actualizarReglas(payload); break;
+      case 'leerListadoEscaneado':      r=leerListadoEscaneado(payload); break;
       default:r={error:'Accion desconocida: '+action};
     }
     return jsonOut(r);
@@ -156,6 +165,10 @@ function doPost(e) {
 if(data.action === 'importarReunionesMatriz') {
       var resultadoImport = importarReunionesMatriz(data.data);
       return jsonOut(resultadoImport);
+    }
+
+    if(data.action === 'leerListadoEscaneado') {
+      return jsonOut(leerListadoEscaneado(data.data));
     }
 
     if(data.action === 'importarAsistenciaEvento') {
@@ -3626,4 +3639,61 @@ function importarPuntajeBaseMatriz(payload) {
     if (filas.length) sheet.getRange(sheet.getLastRow()+1, 1, filas.length, 8).setValues(filas);
     return safe({ ok:true, creados:creados, noEncontrados:noEncontrados, pendiente:pendiente });
   } catch(e){ return safe({ ok:false, error:e.toString() }); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LECTURA DE LISTADO ESCANEADO (botón "Analizar con IA" en Admin)
+//   Requiere la propiedad de script ANTHROPIC_API_KEY
+//   (Configuración del proyecto → Propiedades del script).
+//   Devuelve { ok, filas:[{n,nombre,entrada,salida,justificado,representado,repRut,repNombre,dudoso}] }
+// ═══════════════════════════════════════════════════════════════
+function leerListadoEscaneado(payload) {
+  try {
+    var p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
+    if (!p.base64) return { ok:false, error:'No se recibió la imagen' };
+    var apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+    if (!apiKey) return { ok:false, error:'Falta configurar ANTHROPIC_API_KEY en las propiedades del script' };
+
+    var prompt =
+      'Esta es la foto de un listado de asistencia impreso de un sindicato. Cada fila tiene el número de socio (N°), ' +
+      'el nombre, y casillas o firmas de ENTRADA y SALIDA; puede indicar si el socio está JUSTIFICADO o REPRESENTADO ' +
+      '(en ese caso puede venir el nombre y RUT del representante). Extrae SOLO las filas que tengan alguna marca o firma. ' +
+      'Responde únicamente con JSON válido, sin texto adicional, con esta forma: ' +
+      '{"filas":[{"n":12,"nombre":"JUAN PEREZ","entrada":true,"salida":false,"justificado":false,"representado":false,' +
+      '"repNombre":"","repRut":"","dudoso":false}]}. Usa "dudoso":true cuando la lectura no sea clara.';
+
+    var resp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      muteHttpExceptions: true,
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify({
+        model: 'claude-sonnet-5',
+        max_tokens: 8000,
+        messages: [{ role:'user', content: [
+          { type:'image', source:{ type:'base64', media_type: p.mimeType || 'image/jpeg', data: p.base64 } },
+          { type:'text', text: prompt }
+        ]}]
+      })
+    });
+    var code = resp.getResponseCode();
+    var body = JSON.parse(resp.getContentText());
+    if (code !== 200) return { ok:false, error:'IA ' + code + ': ' + ((body.error && body.error.message) || '') };
+
+    var txt = (body.content || []).filter(function(c){ return c.type === 'text'; })
+                                  .map(function(c){ return c.text; }).join('');
+    var m = txt.match(/\{[\s\S]*\}/);
+    if (!m) return { ok:false, error:'La IA no devolvió un resultado legible' };
+    var filas = (JSON.parse(m[0]).filas || []).map(function(f){
+      return {
+        n: Number(f.n) || f.n || '',
+        nombre: String(f.nombre || ''),
+        entrada: !!f.entrada, salida: !!f.salida,
+        justificado: !!f.justificado, representado: !!f.representado,
+        repNombre: String(f.repNombre || ''), repRut: String(f.repRut || ''),
+        dudoso: !!f.dudoso
+      };
+    }).filter(function(f){ return f.n !== ''; });
+    return { ok:true, filas: filas };
+  } catch(e) { return { ok:false, error: e.toString() }; }
 }
