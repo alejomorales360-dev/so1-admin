@@ -1097,6 +1097,7 @@ function registrarMarcaInstantanea(payload) {
       if(String(rows[i][1])===String(payload.evId) && lRut(rows[i][2]||'')===rk){
         if(tipoNuevo==='AUSENTE'){
           sheet.deleteRow(i+1);
+          generarAusentesObligatorios(payload.evId);
           return safe({ ok:true, accion:'eliminado', id:rows[i][0] });
         }
         sheet.getRange(i+1,4).setValue(tipoNuevo);
