@@ -1163,6 +1163,7 @@ function cerrarEventoActivo(evId) {
           var nuevoEstado  = estadoActual === 'PENDIENTE_ABIERTO' ? 'PENDIENTE' : 'CERRADO';
           evSheet.getRange(i + 1, 11).setValue(nuevoEstado);
           Logger.log('cerrarEventoActivo: evId=' + evId + ' estado=' + nuevoEstado);
+          if (nuevoEstado === 'CERRADO') generarAusentesObligatorios(evId);
           break;
         }
       }
@@ -2330,6 +2331,7 @@ function aprobarEventoPendiente(payload) {
         shAs.getRange(j + 1, 5).setValue(pts);
       }
     }
+    generarAusentesObligatorios(evId);
     return {ok:true};
   } catch(e){ return {ok:false, error:e.toString()}; }
 }
@@ -3152,11 +3154,15 @@ function importarReunionesMatriz(payload) {
 
     if (filasEventos.length) evSheet.getRange(evSheet.getLastRow()+1, 1, filasEventos.length, 11).setValues(filasEventos);
     if (filasAsist.length)   asSheet.getRange(asSheet.getLastRow()+1, 1, filasAsist.length, 12).setValues(filasAsist);
+    if (esAdminImport && eventosCreados) generarAusentesObligatorios();
 
     return safe({ ok:true, eventosCreados:eventosCreados, marcasCreadas:marcasCreadas, omitidos:omitidos, noEncontrados:noEncontrados, pendiente:!esAdminImport });
   } catch(e) { return safe({ ok:false, error:e.toString() }); }
 }
-function generarAusentesObligatorios() {
+// Registra como AUSENTE a todo socio ACTIVO/CONDICIONAL sin marca en reuniones
+// obligatorias ya cerradas. Sin evId revisa todas; con evId solo esa reunión.
+// Se omiten reuniones abiertas o pendientes y socios que ingresaron después.
+function generarAusentesObligatorios(evIdFiltro) {
   try {
     var ss = getSS();
     var evSheet = ss.getSheetByName(SH_EVENTOS);
@@ -3165,23 +3171,28 @@ function generarAusentesObligatorios() {
     if (!evSheet || !asSheet || !soSheet) return { ok:false, error:'Faltan hojas' };
 
     var TIPOS_OBL = ['reunion_presencial','reunion_online','marcha'];
+    var ESTADOS_ABIERTOS = ['ACTIVO','PENDIENTE','PENDIENTE_ABIERTO'];
+    var filtro = (evIdFiltro===undefined || evIdFiltro===null || evIdFiltro==='') ? null : String(evIdFiltro);
 
     var socios = soSheet.getDataRange().getValues().slice(1)
       .filter(function(r){
         var est = String(r[5]||'').toUpperCase().trim();
         return r[0] && (est==='ACTIVO'||est==='CONDICIONAL');
       })
-      .map(function(r){ return { rut: String(r[1]||'').trim() }; })
+      .map(function(r){ return { rut: String(r[1]||'').trim(), fechaIngresoISO: normFecha(r[6]||'') }; })
       .filter(function(s){ return s.rut; });
 
     var evRows = evSheet.getDataRange().getValues();
     var eventos = [];
     for (var i=1; i<evRows.length; i++){
+      var evIdRow = String(evRows[i][0]||'');
+      if (!evIdRow || (filtro && evIdRow!==filtro)) continue;
       var tipo = String(evRows[i][2]||'').trim().toLowerCase().replace(/ /g,'_');
-      if (TIPOS_OBL.indexOf(tipo)>=0){
-        eventos.push({ evId:String(evRows[i][0]), nombre:String(evRows[i][1]||''), tipo:tipo, fecha:evRows[i][3] });
-      }
+      var estado = String(evRows[i][10]||'').trim().toUpperCase();
+      if (TIPOS_OBL.indexOf(tipo)<0 || ESTADOS_ABIERTOS.indexOf(estado)>=0) continue;
+      eventos.push({ evId:evIdRow, nombre:String(evRows[i][1]||''), tipo:tipo, fecha:evRows[i][3], fechaISO:normFecha(evRows[i][3]) });
     }
+    if (!eventos.length) return { ok:true, filasAgregadas:0, detalle:[] };
 
     var asRows = asSheet.getDataRange().getValues();
     var marcadosPorEv = {};
@@ -3203,8 +3214,9 @@ function generarAusentesObligatorios() {
       socios.forEach(function(s){
         var rk = lRut(s.rut);
         if (marcados[rk]) return;
+        if (s.fechaIngresoISO && ev.fechaISO && ev.fechaISO < s.fechaIngresoISO) return;
         var asId = ++asistIdBase;
-        nuevas.push([asId, ev.evId, s.rut, 'AUSENTE', 0, '', '', 'Ausente generado retroactivamente', ts(), ev.nombre, ev.fecha, ev.tipo]);
+        nuevas.push([asId, ev.evId, s.rut, 'AUSENTE', 0, '', '', 'Ausente automático (sin marca)', ts(), ev.nombre, ev.fecha, ev.tipo]);
         marcados[rk] = true;
         agregados++;
       });
@@ -3316,11 +3328,13 @@ function importarAsistenciaEvento(payload) {
       if (id) idToRut[id] = String(f[1]||'');
     });
 
-    var yaMarcados = {};
+    var yaMarcados = {}, filaAusente = {};
     var asRows = asSheet.getDataRange().getValues();
     for (var j=1; j<asRows.length; j++){
       if (String(asRows[j][1])===evId){
-        yaMarcados[lRut(String(asRows[j][2]||''))] = true;
+        var rkYa = lRut(String(asRows[j][2]||''));
+        yaMarcados[rkYa] = true;
+        if (normTA(asRows[j][3])==='AUSENTE') filaAusente[rkYa] = j+1;
       }
     }
 
@@ -3331,6 +3345,14 @@ function importarAsistenciaEvento(payload) {
     marcasIn.forEach(function(m){
       var rut = idToRut[String(m.id)];
       if (!rut) { noEncontrados.push('ID '+m.id); return; }
+      var filaAus = filaAusente[lRut(rut)];
+      if (filaAus && normTA(m.tipoAsistencia)!=='AUSENTE') {
+        asSheet.getRange(filaAus, 4, 1, 2).setValues([[m.tipoAsistencia, m.puntaje]]);
+        asSheet.getRange(filaAus, 8, 1, 2).setValues([['', ts()]]);
+        delete filaAusente[lRut(rut)];
+        agregadas++;
+        return;
+      }
       if (yaMarcados[lRut(rut)]) { omitidas++; return; }
       yaMarcados[lRut(rut)] = true;
       var asId = ++asistIdBase;
@@ -3339,6 +3361,7 @@ function importarAsistenciaEvento(payload) {
     });
 
     if (filas.length) asSheet.getRange(asSheet.getLastRow()+1, 1, filas.length, 12).setValues(filas);
+    generarAusentesObligatorios(evId);
 
     return safe({ ok:true, agregadas:agregadas, omitidas:omitidas, noEncontrados:noEncontrados });
   } catch(e) { return safe({ ok:false, error:e.toString() }); }
