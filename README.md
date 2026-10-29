@@ -55,6 +55,7 @@ La página llama al backend de Apps Script por `fetch`. Si cambias `Codigo.gs`, 
 | Propiedad | Para qué |
 |---|---|
 | `SPREADSHEET_ID` | ID de la planilla de la asamblea (obligatoria) |
+| `NOMBRE_ASAMBLEA` | Nombre corto (p. ej. `SO2`); nombra las carpetas de Drive de la asamblea. Por defecto `SO1` |
 | `CLAVE_ADMIN_INICIAL` | Contraseña del usuario `admin` al crear la hoja USUARIOS en una asamblea nueva |
 | `CLAVE_API` | Clave para integraciones, como el panel del super-administrador (opcional) |
 | `ANTHROPIC_API_KEY` | Lectura de listas escaneadas (opcional) |
