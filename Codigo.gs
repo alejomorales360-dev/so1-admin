@@ -21,8 +21,6 @@
 //
 // CONFIG
 //   A:CLAVE  B:VALOR
-//   admin_usuario | admin
-//   admin_clave   | so1admin2026
 //   cupo_estacionamiento | 80
 //
 // COMISIONES  (opcional, cargado manualmente)
@@ -33,21 +31,60 @@
 //
 // ═══════════════════════════════════════════════════════════════
 
-const SS_ID         = "1-SLawUBXUvYQro37dnVC_2g6KLT1_xE4stoxl7oUJUk";
 const SH_SOCIOS     = "SOCIOS";
 const SH_ASIST      = "ASISTENCIAS";
 const SH_BASE       = "PUNTAJE_BASE";
 const SH_EVENTOS    = "EVENTOS";
 const SH_ASISTENCIAS = SH_ASIST;  // alias — evita ReferenceError
 
-function testBaseOps() {
-  const sheet = getSS().getSheetByName(SH_BASE);
-  if(!sheet) { Logger.log('ERROR: hoja PUNTAJE_BASE no encontrada'); return; }
-  const rows = sheet.getDataRange().getValues();
-  Logger.log('Total filas en PUNTAJE_BASE: ' + rows.length);
-  if(rows.length > 1) {
-    Logger.log('Primera fila de datos: ' + JSON.stringify(rows[1]));
-    Logger.log('rowNum seria: 2');
+// ═══ CONFIGURACIÓN POR ASAMBLEA Y SESIONES ═══
+// Cada asamblea guarda su configuración en Configuración del proyecto → Propiedades del script:
+//   SPREADSHEET_ID       ID de la planilla de la asamblea (obligatoria)
+//   CLAVE_ADMIN_INICIAL  contraseña del usuario admin al crear la hoja USUARIOS (solo instalación)
+//   CLAVE_API            clave para integraciones, p. ej. el super-administrador (opcional)
+//   ANTHROPIC_API_KEY    lectura de listas escaneadas (opcional)
+function _prop(k){ return PropertiesService.getScriptProperties().getProperty(k) || ''; }
+function _ssId(){
+  var id = _prop('SPREADSHEET_ID');
+  if (!id) throw new Error('Falta la propiedad SPREADSHEET_ID en la configuración del script');
+  return id;
+}
+
+var SESION_SEG = 21600; // 6 h sin uso (máximo que permite CacheService)
+function _crearSesion(u){
+  var t = Utilities.getUuid();
+  CacheService.getScriptCache().put('SES_'+t, JSON.stringify(u), SESION_SEG);
+  return t;
+}
+function _sesion(t){
+  if (!t) return null;
+  var c = CacheService.getScriptCache(), k = 'SES_'+String(t), v = c.get(k);
+  if (!v) return null;
+  c.put(k, v, SESION_SEG); // renueva mientras se use
+  try { return JSON.parse(v); } catch(e){ return null; }
+}
+// Sesión iniciada en la app, o CLAVE_API para integraciones.
+function _acceso(token, key){
+  var s = _sesion(token);
+  if (s) return s;
+  var api = _prop('CLAVE_API');
+  if (api && String(key||'') === api) return { usuario:'api', rol:'admin', tipo:'' };
+  return null;
+}
+
+var ACCIONES_SOLO_ADMIN = ['obtenerUsuariosAdmin','crearUsuarioAdmin','editarUsuarioAdmin','toggleActivoUsuario','eliminarUsuarioAdmin',
+  'aprobarEventoPendiente','rechazarEventoPendiente','aprobarPuntajePendiente','rechazarPuntajePendiente','aprobarLoteBase','rechazarLoteBase',
+  'crearSocio','actualizarSocio','cambiarEstadoSocio','eliminarSocio','actualizarReglas'];
+var ACCIONES_CON_USUARIO = ['obtenerEventosDeComision','reabrirEventoComision','editarEventoComision','eliminarEventoComision','obtenerEventoActivo'];
+var ACCIONES_CON_CREADOR = ['iniciarEvento','iniciarEventoPendiente','importarReunionesMatriz','importarPuntajeBaseMatriz','inyectarPuntajeBase','inyectarLoteBase'];
+
+// El usuario, su rol y si un puntaje queda pendiente los decide la sesión, no lo que envíe la pantalla.
+function _aplicarSesion(action, obj, ses){
+  if (!obj || typeof obj !== 'object' || ses.usuario === 'api') return;
+  if (ACCIONES_CON_USUARIO.indexOf(action) >= 0) { obj.usuario = ses.usuario; obj.rol = ses.rol; }
+  if (ACCIONES_CON_CREADOR.indexOf(action) >= 0) {
+    obj.creadoPor = ses.usuario;
+    if (action === 'inyectarPuntajeBase' || action === 'inyectarLoteBase') obj.pendiente = ses.rol !== 'admin';
   }
 }
 
@@ -69,12 +106,17 @@ function doGet(e){
       .addMetaTag('viewport','width=device-width, initial-scale=1')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
-  const AK='so1admin2026';
-  const publicas=['obtenerPuntajePorRut','obtenerPuntajeCompletoSocio','actualizarDatosSocio','autenticarUsuario'];
-  if(key!==AK&&!publicas.includes(action))return jsonOut({error:'No autorizado'});
+  const publicas=['obtenerPuntajePorRut','obtenerPuntajeCompletoSocio','actualizarDatosSocio','autenticarUsuario','obtenerReglas'];
+  let ses=null;
+  if(!publicas.includes(action)){
+    ses=_acceso(p.token,key);
+    if(!ses)return jsonOut({error:'No autorizado',sesionExpirada:true});
+    if(ACCIONES_SOLO_ADMIN.includes(action)&&ses.rol!=='admin')return jsonOut({ok:false,error:'Solo el administrador puede hacer esto'});
+  }
   const arg=p.arg?decodeURIComponent(p.arg):'';
   let payload={};
   if(p.data){try{payload=JSON.parse(p.data);}catch(ex){}}
+  if(ses){_aplicarSesion(action,payload,ses);_aplicarSesion(action,p,ses);}
   try{
     let r;
     switch(action){
@@ -108,8 +150,7 @@ function doGet(e){
       case 'registrarCuota':r=registrarCuota(payload);break;
       case 'registrarCuotasMultiples':r=registrarCuotasMultiples(payload);break;
       case 'actualizarDatosSocio':r=actualizarDatosSocio(payload);break;
-      case 'actualizarEstadoSocio':if(key!=='so1admin2026'){return jsonOut({error:'No autorizado'});}r=actualizarEstadoSocio(payload);break;
-      case 'cerrarEventoMasivo':r=cerrarEventoMasivo(payload);break;
+      case 'actualizarEstadoSocio':r=actualizarEstadoSocio(payload);break;
       case 'autenticarUsuario':      r=autenticarUsuario(payload);       break;
       case 'obtenerUsuariosAdmin':   r=obtenerUsuariosAdmin();           break;
       case 'crearUsuarioAdmin':      r=crearUsuarioAdmin(payload);        break;
@@ -160,7 +201,11 @@ function doPost(e) {
       return jsonOut(resultadoFoto);
     }
 
-    if(data.key !== 'so1admin2026') return ContentService.createTextOutput('no_auth').setMimeType(ContentService.MimeType.TEXT);
+    if(data.action === 'autenticarUsuario') return jsonOut(autenticarUsuario(data.data));
+
+    var sesPost = _acceso(data.token, data.key);
+    if(!sesPost) return jsonOut({ok:false, error:'No autorizado', sesionExpirada:true});
+    _aplicarSesion(data.action, data.data, sesPost);
 
 if(data.action === 'importarReunionesMatriz') {
       var resultadoImport = importarReunionesMatriz(data.data);
@@ -193,7 +238,7 @@ if(data.action === 'importarReunionesMatriz') {
           var url = PropertiesService.getScriptProperties().getProperty(data.ticketId);
           if(url) {
             var urlData = JSON.parse(url);
-            var cuSheet = SpreadsheetApp.openById(SS_ID).getSheetByName('CUOTAS');
+            var cuSheet = getSS().getSheetByName('CUOTAS');
             if(cuSheet) {
               var rk = lRut(data.cuotaRut);
               var mes = String(data.cuotaMes);
@@ -227,7 +272,7 @@ function obtenerResultadoUpload(ticketId) {
     return JSON.parse(val);
   } catch(e) { return {pending: true}; }
 }
-function getSS()   { return SpreadsheetApp.openById(SS_ID); }
+function getSS()   { return SpreadsheetApp.openById(_ssId()); }
 function safe(o)   { return JSON.parse(JSON.stringify(o)); }
 function ts()      { return new Date().toLocaleString('es-CL'); }
 function lRut(r)   { return String(r||'').replace(/\./g,'').replace(/-/g,'').replace(/\s/g,'').trim().toUpperCase(); }
@@ -418,86 +463,6 @@ function buscarSocioPorRut(rut) {
     }
     return safe({ socio:null });
   } catch(e){ return safe({ error:e.toString() }); }
-}
-
-// ─────────────────────────────────────────────────────────────
-// CERRAR EVENTO MASIVO (doble marca)
-// ─────────────────────────────────────────────────────────────
-function cerrarEventoMasivo(payload) {
-  try {
-    const ss = getSS();
-    const ev = payload.evento;
-    const regs = payload.registros || [];
-
-    let evSheet = ss.getSheetByName(SH_EVENTOS);
-    if(!evSheet){
-      evSheet = ss.insertSheet(SH_EVENTOS);
-      evSheet.appendRow(['ID','NOMBRE','TIPO','FECHA','PTS_COMPLETO','PTS_PARCIAL','TIMESTAMP','NOTAS']);
-    } else if(evSheet.getLastRow() === 0){
-      evSheet.appendRow(['ID','NOMBRE','TIPO','FECHA','PTS_COMPLETO','PTS_PARCIAL','TIMESTAMP','NOTAS']);
-    }
-    const evId = evSheet.getLastRow();
-    evSheet.appendRow([evId, ev.nombre, ev.tipo, fmtFecha(ev.fecha), ev.ptsCompleto, ev.ptsParcial, ts(), '']);
-
-    let asSheet = ss.getSheetByName(SH_ASIST);
-    if(!asSheet){
-      asSheet = ss.insertSheet(SH_ASIST);
-      asSheet.appendRow(['ID','ID_EVENTO','RUT_TITULAR','TIPO_ASISTENCIA','PUNTAJE','NOMBRE_REPRESENTANTE','RUT_REPRESENTANTE','OBSERVACION','TIMESTAMP','EVENTO','FECHA','TIPO_EVENTO']);
-    } else if(asSheet.getLastRow() === 0){
-      asSheet.appendRow(['ID','ID_EVENTO','RUT_TITULAR','TIPO_ASISTENCIA','PUNTAJE','NOMBRE_REPRESENTANTE','RUT_REPRESENTANTE','OBSERVACION','TIMESTAMP','EVENTO','FECHA','TIPO_EVENTO']);
-    }
-
-    const fecha = fmtFecha(ev.fecha);
-    let guardados = 0;
-    regs.forEach(r=>{
-      const newId = asSheet.getLastRow();
-      asSheet.appendRow([
-        newId, evId, ev.nombre, ev.tipo, fecha,
-        lRut(r.rutTitular||''),
-        r.tipoAsistencia||'PRESENTE',
-        Number(r.puntaje)||0,
-        r.nombreRepresentante||'',
-        lRut(r.rutRepresentante||''),
-        r.observacion||'',
-        ts()
-      ]);
-      guardados++;
-    });
-
-    return safe({ ok:true, guardados, idEvento: evId });
-  } catch(e){ return safe({ ok:false, error:e.toString() }); }
-}
-
-// ─────────────────────────────────────────────────────────────
-// REGISTRAR ASISTENCIA INDIVIDUAL (desde panel registrar)
-// ─────────────────────────────────────────────────────────────
-function registrarAsistencia(payload) {
-  try {
-    const ss = getSS();
-    let sheet = ss.getSheetByName(SH_ASIST);
-    if(!sheet){
-      sheet = ss.insertSheet(SH_ASIST);
-      sheet.appendRow(['ID','ID_EVENTO','RUT_TITULAR','TIPO_ASISTENCIA','PUNTAJE','NOMBRE_REPRESENTANTE','RUT_REPRESENTANTE','OBSERVACION','TIMESTAMP','EVENTO','FECHA','TIPO_EVENTO']);
-    } else if(sheet.getLastRow() === 0){
-      sheet.appendRow(['ID','ID_EVENTO','RUT_TITULAR','TIPO_ASISTENCIA','PUNTAJE','NOMBRE_REPRESENTANTE','RUT_REPRESENTANTE','OBSERVACION','TIMESTAMP','EVENTO','FECHA','TIPO_EVENTO']);
-    }
-    const newId = sheet.getLastRow();
-    sheet.appendRow([
-      newId,
-      payload.idEvento||'',
-      lRut(payload.rutSocio||''),
-      payload.tipoAsistencia||'PRESENTE',
-      Number(payload.puntaje)||0,
-      payload.nombreRepresentante||'',
-      lRut(payload.rutRepresentante||''),
-      payload.observacion||'',
-      ts(),
-      payload.evento||'',
-      fmtFecha(payload.fecha||''),
-      payload.tipoEvento||'otro'
-    ]);
-    return safe({ ok:true, id:newId });
-  } catch(e){ return safe({ ok:false, error:e.toString() }); }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1176,102 +1141,6 @@ function cerrarEventoActivo(evId) {
   }
 }
 
-function fixTipoEventoCompleto() {
-  const ss = SpreadsheetApp.openById('1-SLawUBXUvYQro37dnVC_2g6KLT1_xE4stoxl7oUJUk');
-  let fixedAs = 0, fixedEv = 0;
-
-  const asSheet = ss.getSheetByName('ASISTENCIAS');
-  const asRows = asSheet.getDataRange().getValues();
-  for(let i = 1; i < asRows.length; i++) {
-    const evento = String(asRows[i][9] || '').toLowerCase();
-    const tipo   = String(asRows[i][11] || '').toLowerCase();
-    if(tipo !== 'comision') continue;
-    let nuevo = tipo;
-    if(evento.includes('fenapo'))            nuevo = 'comision_fenapo';
-    else if(evento.includes('directiva'))    nuevo = 'comision_directiva';
-    else if(evento.includes('jardincito'))   nuevo = 'comision_jardincito';
-    else if(evento.includes('escuelita'))    nuevo = 'comision_escuelita';
-    else if(evento.includes('comprando'))    nuevo = 'comision_comprando';
-    else if(evento.includes('reglamento'))   nuevo = 'comision_reglamento';
-    else if(evento.includes('bienestar'))    nuevo = 'comision_bienestar';
-    else if(evento.includes('deportes'))     nuevo = 'comision_deportes';
-    else if(evento.includes('comunicacion')) nuevo = 'comision_comunicaciones';
-    else if(evento.includes('secretaria'))   nuevo = 'comision_secretaria';
-    else if(evento.includes('tesoreria'))    nuevo = 'comision_tesoreria';
-    else if(evento.includes('taller'))       nuevo = 'comision_talleres';
-    if(nuevo !== tipo){ asSheet.getRange(i+1, 12).setValue(nuevo); fixedAs++; }
-  }
-
-  const evSheet = ss.getSheetByName('EVENTOS');
-  if(evSheet){
-    const evRows = evSheet.getDataRange().getValues();
-    for(let i = 1; i < evRows.length; i++) {
-      const nombre = String(evRows[i][1] || '').toLowerCase();
-      const tipo   = String(evRows[i][2] || '').toLowerCase();
-      if(tipo !== 'comision') continue;
-      let nuevo = tipo;
-      if(nombre.includes('fenapo'))          nuevo = 'fenapo';
-      else if(nombre.includes('jardincito')) nuevo = 'comision_jardincito';
-      else if(nombre.includes('escuelita'))  nuevo = 'comision_escuelita';
-      else if(nombre.includes('comprando'))  nuevo = 'comision_comprando';
-      else if(nombre.includes('reglamento')) nuevo = 'comision_reglamento';
-      if(nuevo !== tipo){ evSheet.getRange(i+1, 3).setValue(nuevo); fixedEv++; }
-    }
-  }
-
-  SpreadsheetApp.getUi().alert('Listo!\nASISTENCIAS corregidas: ' + fixedAs + '\nEVENTOS corregidos: ' + fixedEv);
-}
-
-function fixAsistenciasTipo() {
-  const ss = SpreadsheetApp.openById('1-SLawUBXUvYQro37dnVC_2g6KLT1_xE4stoxl7oUJUk');
-  const sheet = ss.getSheetByName('ASISTENCIAS');
-  const rows = sheet.getDataRange().getValues();
-  let fixed = 0;
-
-  for(let i = 1; i < rows.length; i++) {
-    const tipo = String(rows[i][11] || '').toLowerCase();
-    if(tipo !== 'comision') continue;
-
-    const evento = String(rows[i][9] || '').toLowerCase();
-    let nuevo = tipo;
-    if(evento.includes('fenapo'))          nuevo = 'fenapo';
-    else if(evento.includes('jardincito')) nuevo = 'comision_jardincito';
-    else if(evento.includes('escuelita'))  nuevo = 'comision_escuelita';
-    else if(evento.includes('comprando'))  nuevo = 'comision_comprando';
-    else if(evento.includes('reglamento')) nuevo = 'comision_reglamento';
-
-    if(nuevo !== tipo) {
-      sheet.getRange(i + 1, 12).setValue(nuevo);
-      fixed++;
-    }
-  }
-
-  SpreadsheetApp.getUi().alert('Listo. ASISTENCIAS corregidas: ' + fixed);
-}
-
-function fixAsistenciasDefinitivo() {
-  const ss = SpreadsheetApp.openById('1-SLawUBXUvYQro37dnVC_2g6KLT1_xE4stoxl7oUJUk');
-  const sheet = ss.getSheetByName('ASISTENCIAS');
-
-  const cambios = [
-    { filaInicio: 958,  filaFin: 1052, valor: 'fenapo' },
-    { filaInicio: 1053, filaFin: 1123, valor: 'comision_jardincito' },
-    { filaInicio: 1124, filaFin: 1130, valor: 'comision_comprando' },
-    { filaInicio: 1131, filaFin: 1143, valor: 'comision_reglamento' },
-    { filaInicio: 1144, filaFin: 1186, valor: 'comision_escuelita' }
-  ];
-
-  let total = 0;
-  cambios.forEach(function(c) {
-    const nFilas = c.filaFin - c.filaInicio + 1;
-    const rango = sheet.getRange(c.filaInicio, 12, nFilas, 1);
-    const vals = Array(nFilas).fill([c.valor]);
-    rango.setValues(vals);
-    total += nFilas;
-  });
-
-  SpreadsheetApp.getUi().alert('Listo. ' + total + ' filas actualizadas en ASISTENCIAS.');
-}
 function obtenerListaEventos() {
   try {
     const ss=getSS();
@@ -1608,7 +1477,7 @@ function obtenerDashTesoreria(){
 
 function obtenerSociosCuotas(mes) {
   try {
-    var ss   = SpreadsheetApp.openById(SS_ID);
+    var ss   = getSS();
     var shSo = ss.getSheetByName(SH_SOCIOS);
     var shCu = ss.getSheetByName('CUOTAS');
     var mesStr = normMes(mes);
@@ -1818,7 +1687,7 @@ function obtenerMovimientos(filtros){
 
 function obtenerHistorialSocioTes(rut) {
   try {
-    var ss   = SpreadsheetApp.openById(SS_ID);
+    var ss   = getSS();
     var shSo = ss.getSheetByName(SH_SOCIOS);
     var shCu = ss.getSheetByName('CUOTAS');
     var rk   = lRut(String(rut||''));
@@ -1887,26 +1756,6 @@ function registrarCuotasMultiples(payload){
   }catch(e){return safe({ok:false,error:e.toString()});}
 }
 
-function sincronizarPuntosCuotas(){
-  try{
-    const ss=getSS();
-    const cuSheet=ss.getSheetByName(SH_CUOTAS);
-    if(!cuSheet)return safe({ok:false,error:'No existe hoja CUOTAS'});
-    const rows=cuSheet.getDataRange().getValues().slice(1);
-    let asignados=0;
-    rows.forEach(r=>{
-      const aTiempo=r[6]===true||String(r[6]).toLowerCase()==='true';
-      const pts=Number(r[7]||0);
-      const rut=String(r[1]||'');
-      const mes=String(r[3]||'');
-      if(!aTiempo||pts<=0||!rut||!mes)return;
-      inyectarPuntajeBase({rut,anio:2026,puntos:pts,concepto:'Cuota al dia - '+mes,observacion:'Sincronizacion automatica'});
-      asignados++;
-    });
-    SpreadsheetApp.getUi().alert('Listo. '+asignados+' registros de puntos inyectados.');
-    return safe({ok:true,asignados});
-  }catch(e){return safe({ok:false,error:e.toString()});}
-}
 /* === ACTUALIZAR DATOS SOCIO (sin key - el socio actualiza sus propios datos) === */
 function actualizarDatosSocio(payload){
   try{
@@ -1944,56 +1793,12 @@ function actualizarEstadoSocio(payload){
   }catch(e){return safe({ok:false,error:e.toString()});}
 }
 
-function corregirPuntosCuotas(){
-  try{
-    const ss=getSS();
-    const cuSheet=ss.getSheetByName('CUOTAS');
-    const bsSheet=ss.getSheetByName(SH_BASE);
-    if(!cuSheet){console.log('ERROR: No existe hoja CUOTAS');return;}
-    const cuRows=cuSheet.getDataRange().getValues();
-    console.log('Filas en CUOTAS: '+cuRows.length);
-
-    for(let i=1;i<=Math.min(3,cuRows.length-1);i++){
-      console.log('Fila '+i+': RUT='+cuRows[i][1]+' MES='+cuRows[i][3]+' ATIEMPO='+cuRows[i][6]+' (tipo:'+typeof cuRows[i][6]+') PTS='+cuRows[i][7]);
-    }
-
-    let eliminados=0;
-    if(bsSheet){
-      const bsRows=bsSheet.getDataRange().getValues();
-      for(let i=bsRows.length-1;i>=1;i--){
-        if(String(bsRows[i][3]||'').includes('Cuota al dia')){
-          bsSheet.deleteRow(i+1);eliminados++;
-        }
-      }
-    }
-    console.log('Eliminados de PUNTAJE_BASE: '+eliminados);
-
-    let corregidos=0,inyectados=0;
-    for(let i=1;i<cuRows.length;i++){
-      const aT=cuRows[i][6];
-      const aTiempo=aT===true||aT===1||String(aT).toLowerCase()==='true';
-      console.log('Fila '+i+' aTiempo='+aTiempo+' valor='+aT);
-      if(!aTiempo)continue;
-      cuSheet.getRange(i+1,8).setValue(20);
-      const rut=String(cuRows[i][1]||'');
-      const mes=normMes(cuRows[i][3]||'');
-      const fechaPago=normFecha(cuRows[i][5]||'');
-      console.log('Inyectando: rut='+rut+' mes='+mes);
-      if(rut&&mes){
-        inyectarPuntajeBase({rut,anio:2026,puntos:20,concepto:'Cuota al dia - '+mes,observacion:'Pago '+fechaPago});
-        inyectados++;
-      }
-      corregidos++;
-    }
-    console.log('RESULTADO: '+corregidos+' corregidos · '+inyectados+' inyectados');
-  }catch(e){console.log('Error: '+e.toString());}
-}
 // ═══════════════════════════════════════════════════
 // MÓDULO DE ACCESOS — USUARIOS
 // ═══════════════════════════════════════════════════
 
 function getSheetUsuarios_() {
-  var ss = SpreadsheetApp.openById(SS_ID);
+  var ss = getSS();
   var sh = ss.getSheetByName('USUARIOS');
   if (!sh) {
     sh = ss.insertSheet('USUARIOS');
@@ -2004,27 +1809,59 @@ function getSheetUsuarios_() {
   return sh;
 }
 
+// Crea los usuarios base de una asamblea nueva. Solo el admin queda con contraseña
+// (la de la propiedad CLAVE_ADMIN_INICIAL); al resto se la asigna el admin desde Accesos.
 function _seedUsuarios_(sh) {
+  var claveAdmin = _prop('CLAVE_ADMIN_INICIAL');
+  if (!claveAdmin) throw new Error('Falta la propiedad CLAVE_ADMIN_INICIAL para crear el usuario admin');
   var ts = new Date().toISOString();
   var TABS_ADMIN   = JSON.stringify([0,1,2,3,4,5,6,7,8]);
   var TABS_COM_M2  = JSON.stringify([0,6,1,2]);
   var TABS_COM_M   = JSON.stringify([0,6,1]);
   var TABS_BASE    = JSON.stringify([0,6]);
   [
-    [1,'admin',        'so1admin2026','admin',    '',                       TABS_ADMIN, true,'Administrador',ts],
-    [2,'directiva',    'dir2026',     'comision', 'comision_directiva',     TABS_COM_M2,true,'Directiva',ts],
-    [3,'fenapo',       'fen2026',     'comision', 'comision_fenapo',        TABS_COM_M, true,'FENAPO',ts],
-    [4,'jardincito',   'jar2026',     'comision', 'comision_jardincito',    TABS_COM_M, true,'Jardincito',ts],
-    [5,'escuelita',    'esc2026',     'comision', 'comision_escuelita',     TABS_COM_M, true,'Escuelita',ts],
-    [6,'comprando',    'com2026',     'comision', 'comision_comprando',     TABS_COM_M, true,'Comprando Juntos',ts],
-    [7,'reglamento',   'reg2026',     'comision', 'comision_reglamento',    TABS_COM_M, true,'Reglamento Interno',ts],
-    [8,'bienestar',    'bie2026',     'comision', 'comision_bienestar',     TABS_COM_M, true,'Bienestar',ts],
-    [9,'deportes',     'dep2026',     'comision', 'comision_deportes',      TABS_COM_M, true,'Deportes',ts],
-    [10,'comunicaciones','comu2026',  'comision', 'comision_comunicaciones',TABS_COM_M, true,'Comunicaciones',ts],
-    [11,'secretaria',  'sec2026',     'comision', 'comision_secretaria',    TABS_COM_M, true,'Secretaría',ts],
-    [12,'tesoreria',   'so1teso2026', 'tesoreria','',                       TABS_BASE,  true,'Tesorería',ts],
-    [13,'talleres',    'tal2026',     'comision', 'comision_talleres',      TABS_COM_M, true,'Talleres Laborales',ts],
+    [1,'admin',        _hashClave(claveAdmin),'admin',    '',                       TABS_ADMIN, true,'Administrador',ts],
+    [2,'directiva',    '',            'comision', 'comision_directiva',     TABS_COM_M2,true,'Directiva',ts],
+    [3,'fenapo',       '',            'comision', 'comision_fenapo',        TABS_COM_M, true,'FENAPO',ts],
+    [4,'jardincito',   '',            'comision', 'comision_jardincito',    TABS_COM_M, true,'Jardincito',ts],
+    [5,'escuelita',    '',            'comision', 'comision_escuelita',     TABS_COM_M, true,'Escuelita',ts],
+    [6,'comprando',    '',            'comision', 'comision_comprando',     TABS_COM_M, true,'Comprando Juntos',ts],
+    [7,'reglamento',   '',            'comision', 'comision_reglamento',    TABS_COM_M, true,'Reglamento Interno',ts],
+    [8,'bienestar',    '',            'comision', 'comision_bienestar',     TABS_COM_M, true,'Bienestar',ts],
+    [9,'deportes',     '',            'comision', 'comision_deportes',      TABS_COM_M, true,'Deportes',ts],
+    [10,'comunicaciones','',          'comision', 'comision_comunicaciones',TABS_COM_M, true,'Comunicaciones',ts],
+    [11,'secretaria',  '',            'comision', 'comision_secretaria',    TABS_COM_M, true,'Secretaría',ts],
+    [12,'tesoreria',   '',            'tesoreria','',                       TABS_BASE,  true,'Tesorería',ts],
+    [13,'talleres',    '',            'comision', 'comision_talleres',      TABS_COM_M, true,'Talleres Laborales',ts],
   ].forEach(function(r){ sh.appendRow(r); });
+}
+
+// Contraseñas guardadas como sha256$sal$hash (nunca en texto plano).
+function _hashClave(clave, sal) {
+  sal = sal || Utilities.getUuid().replace(/-/g, '');
+  var d = sal + '|' + String(clave);
+  for (var i = 0; i < 300; i++) {
+    d = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, d, Utilities.Charset.UTF_8));
+  }
+  return 'sha256$' + sal + '$' + d;
+}
+function _verificarClave(clave, guardada) {
+  guardada = String(guardada || '').trim();
+  if (!guardada || !clave) return false;
+  if (guardada.indexOf('sha256$') === 0) return _hashClave(clave, guardada.split('$')[1]) === guardada;
+  return String(clave) === guardada; // contraseña antigua en texto plano; se migra al iniciar sesión
+}
+
+// Ejecutar una vez desde el editor para proteger todas las contraseñas que sigan en texto plano.
+function protegerClavesExistentes() {
+  var sh = getSheetUsuarios_();
+  var data = sh.getDataRange().getValues(), n = 0;
+  for (var i = 1; i < data.length; i++) {
+    var c = String(data[i][2] || '').trim();
+    if (c && c.indexOf('sha256$') !== 0) { sh.getRange(i+1, 3).setValue(_hashClave(c)); n++; }
+  }
+  Logger.log('Contraseñas protegidas: ' + n);
+  return n;
 }
 
 function autenticarUsuario(payload) {
@@ -2032,18 +1869,27 @@ function autenticarUsuario(payload) {
     var p = typeof payload==='string'?JSON.parse(payload):payload;
     var usr = String(p.usuario||'').toLowerCase().trim();
     var pwd = String(p.password||'').trim();
-    var data = getSheetUsuarios_().getDataRange().getValues();
+    var cache = CacheService.getScriptCache(), kFallos = 'FALLOS_' + usr;
+    var fallos = Number(cache.get(kFallos) || 0);
+    if (fallos >= 5) return {ok:false, error:'Demasiados intentos fallidos. Espera 10 minutos.'};
+    var sh = getSheetUsuarios_();
+    var data = sh.getDataRange().getValues();
     for (var i=1; i<data.length; i++) {
       if (String(data[i][1]||'').toLowerCase().trim() !== usr) continue;
       if (!data[i][6]) return {ok:false, error:'Usuario inactivo'};
-      if (String(data[i][2]||'').trim() !== pwd) return {ok:false, error:'Credenciales incorrectas'};
+      var guardada = String(data[i][2]||'').trim();
+      if (!_verificarClave(pwd, guardada)) break;
+      cache.remove(kFallos);
+      if (guardada.indexOf('sha256$') !== 0) sh.getRange(i+1, 3).setValue(_hashClave(pwd));
       var tabs = [];
       try { tabs = JSON.parse(String(data[i][5]||'[]')); } catch(e){ tabs=[0,6]; }
-      return {ok:true, id:data[i][0], rol:String(data[i][3]||'comision'),
-              tipo:String(data[i][4]||''), tabs:tabs,
-              nombreMostrar:String(data[i][7]||usr)};
+      var rol = String(data[i][3]||'comision'), tipo = String(data[i][4]||'');
+      return {ok:true, id:data[i][0], rol:rol, tipo:tipo, tabs:tabs,
+              nombreMostrar:String(data[i][7]||usr),
+              token:_crearSesion({usuario:usr, rol:rol, tipo:tipo})};
     }
-    return {ok:false, error:'Usuario no encontrado'};
+    cache.put(kFallos, String(fallos + 1), 600);
+    return {ok:false, error:'Usuario o contraseña incorrectos'};
   } catch(e){ return {ok:false, error:e.toString()}; }
 }
 
@@ -2075,7 +1921,7 @@ function crearUsuarioAdmin(payload) {
     }
     var newId = data.length>1?(parseInt(data[data.length-1][0])||0)+1:1;
     var tabs = p.tabs||[0,6];
-    sh.appendRow([newId,usr,p.password,p.rol||'comision',p.tipo||'',
+    sh.appendRow([newId,usr,_hashClave(String(p.password).trim()),p.rol||'comision',p.tipo||'',
                   JSON.stringify(tabs),true,p.nombreMostrar||usr,new Date().toISOString()]);
     return {ok:true, id:newId};
   } catch(e){ return {ok:false, error:e.toString()}; }
@@ -2090,7 +1936,7 @@ function editarUsuarioAdmin(payload) {
     for (var i=1; i<data.length; i++) {
       if (String(data[i][0])!==id) continue;
       var row = i+1;
-      if (p.password) sh.getRange(row,3).setValue(p.password);
+      if (p.password) sh.getRange(row,3).setValue(_hashClave(String(p.password).trim()));
       sh.getRange(row,4).setValue(p.rol||data[i][3]);
       sh.getRange(row,5).setValue(p.tipo||'');
       sh.getRange(row,6).setValue(JSON.stringify(p.tabs||[0,6]));
@@ -2132,13 +1978,6 @@ function eliminarUsuarioAdmin(payload) {
     }
     return {ok:false, error:'No encontrado'};
   } catch(e){ return {ok:false, error:e.toString()}; }
-}
-
-function resetearUsuarios() {
-  var ss = SpreadsheetApp.openById(SS_ID);
-  var sh = ss.getSheetByName('USUARIOS');
-  if(sh) ss.deleteSheet(sh);
-  getSheetUsuarios_();
 }
 
 // ═══ FLUJO PENDIENTES COMISIONES ═══
@@ -2300,7 +2139,7 @@ function aprobarEventoPendiente(payload) {
   try {
     var p = typeof payload==='string'?JSON.parse(payload):payload;
     var evId = String(p.evId);
-    var ss = SpreadsheetApp.openById(SS_ID);
+    var ss = getSS();
     var shEv = ss.getSheetByName(SH_EVENTOS);
     var shAs = ss.getSheetByName(SH_ASIST);
 
@@ -2341,7 +2180,7 @@ function rechazarEventoPendiente(payload) {
   try {
     var p = typeof payload==='string'?JSON.parse(payload):payload;
     var evId = String(p.evId);
-    var ss = SpreadsheetApp.openById(SS_ID);
+    var ss = getSS();
     var shEv = ss.getSheetByName(SH_EVENTOS);
     var shAs = ss.getSheetByName(SH_ASIST);
     var evData = shEv.getDataRange().getValues();
@@ -2375,16 +2214,6 @@ function rechazarPuntajePendiente(payload) {
     return {ok:true};
   } catch(e){ return {ok:false, error:e.toString()}; }
 }
-function testPendientes() {
-  var shEv = getSS().getSheetByName(SH_EVENTOS);
-  if(!shEv){Logger.log('NO EXISTE hoja EVENTOS');return;}
-  var rows = shEv.getDataRange().getValues();
-  Logger.log('Total filas EVENTOS: '+rows.length);
-  for(var i=1;i<rows.length;i++){
-    Logger.log('Fila '+i+': NOTAS='+rows[i][7]+' | NOMBRE='+rows[i][1]);
-  }
-}
-
 // ═══ LOTES DE PUNTAJE BASE ═══
 
 function inyectarLoteBase(payload) {
@@ -2448,64 +2277,10 @@ function rechazarLoteBase(payload) {
     return {ok:true};
   } catch(e){ return {ok:false, error:e.toString()}; }
 }
-function generarFaltasRetroactivas() {
-  var EVENTO_ID  = 35;
-  var EVENTO_NOM = 'Reunion MEET Mayo';
-  var EVENTO_FEC = '23-05-2026';
-  var EVENTO_TIP = 'reunion_online';
-
-  var ss   = SpreadsheetApp.openById(SS_ID);
-  var shAs = ss.getSheetByName('ASISTENCIAS');
-  var shSo = ss.getSheetByName('SOCIOS');
-  if(!shAs || !shSo){ Logger.log('ERROR: hojas no encontradas'); return; }
-
-  var asRows  = shAs.getDataRange().getValues();
-  var marcados = {};
-  for(var j=1; j<asRows.length; j++){
-    if(String(asRows[j][1]) === String(EVENTO_ID)){
-      var rk = lRut(String(asRows[j][2]||''));
-      if(rk) marcados[rk] = true;
-    }
-  }
-
-  var soRows  = shSo.getDataRange().getValues();
-  var nuevas  = [];
-  var ahora   = ts();
-  var baseId  = shAs.getLastRow();
-
-  for(var k=1; k<soRows.length; k++){
-    var est = String(soRows[k][5]||'').toUpperCase().trim();
-    if(est !== 'ACTIVO' && est !== 'CONDICIONAL') continue;
-    var rutLimpio = lRut(String(soRows[k][1]||''));
-    if(!rutLimpio || marcados[rutLimpio]) continue;
-
-    nuevas.push([
-      baseId + nuevas.length + 1,
-      EVENTO_ID,
-      soRows[k][1]||'',
-      'FALTA',
-      0,
-      '', '',
-      'Falta retroactiva',
-      ahora,
-      EVENTO_NOM,
-      EVENTO_FEC,
-      EVENTO_TIP
-    ]);
-  }
-
-  if(nuevas.length > 0){
-    shAs.getRange(shAs.getLastRow()+1, 1, nuevas.length, 12).setValues(nuevas);
-  }
-
-  Logger.log('FALTAs generadas: ' + nuevas.length + ' de ' + (soRows.length-1) + ' socios');
-  SpreadsheetApp.getUi().alert('Listo: ' + nuevas.length + ' FALTAs generadas para ' + EVENTO_NOM);
-}
-
 function obtenerResumenAnualCuotas(payload) {
   var anio = String((payload&&payload.anio)||'2026');
   try {
-    var ss   = SpreadsheetApp.openById(SS_ID);
+    var ss   = getSS();
     var shSo = ss.getSheetByName(SH_SOCIOS);
     var shCu = ss.getSheetByName('CUOTAS');
     if(!shSo) return {ok:false,error:'Sin hoja SOCIOS'};
@@ -2549,65 +2324,6 @@ function obtenerResumenAnualCuotas(payload) {
 
     return {ok:true, socios:resultado};
   } catch(e){ return {ok:false,error:e.toString()}; }
-}
-
-function sincronizarCuotas2026() {
-  try {
-    var ss = getSS();
-    var cuSheet = ss.getSheetByName('CUOTAS');
-    var bsSheet = ss.getSheetByName(SH_BASE);
-    if(!cuSheet){ SpreadsheetApp.getUi().alert('Error: No existe hoja CUOTAS'); return; }
-
-    var yaExiste = new Set();
-    if(bsSheet){
-      bsSheet.getDataRange().getValues().slice(1).forEach(function(r){
-        var concepto = String(r[3]||'');
-        var anio     = String(r[2]||'');
-        if(anio === '2026' && concepto.indexOf('Cuota al dia - 2026') === 0){
-          var mes = concepto.replace('Cuota al dia - ','').trim();
-          yaExiste.add(lRut(String(r[1]||''))+'|'+mes);
-        }
-      });
-    }
-    Logger.log('Entradas 2026 ya en PUNTAJE_BASE: '+yaExiste.size);
-
-    var inyectados = 0, omitidos = 0, tardios = 0;
-    cuSheet.getDataRange().getValues().slice(1).forEach(function(r){
-      var rut = String(r[1]||'').trim();
-      var mes = normMes(r[3]);
-      if(!rut || !mes || !mes.startsWith('2026')) return;
-
-      var fp      = normFecha(r[5]);
-      var aTiempo = fp ? (fp.slice(0,7) <= mes) : parseBool(r[6]);
-
-      if(!aTiempo){ tardios++; return; }
-
-      var key = lRut(rut)+'|'+mes;
-      if(yaExiste.has(key)){ omitidos++; return; }
-
-      inyectarPuntajeBase({
-        rut:         rut,
-        anio:        '2026',
-        puntos:      20,
-        concepto:    'Cuota al dia - '+mes,
-        observacion: 'Sincronizado desde CUOTAS (pago '+fp+')'
-      });
-      yaExiste.add(key);
-      inyectados++;
-    });
-
-    var msg = '✓ Cuotas 2026 sincronizadas:\n'
-            + '  Inyectados:   '+inyectados+' registros (+'+(inyectados*20)+' pts)\n'
-            + '  Ya existían:  '+omitidos+'\n'
-            + '  Tardíos (0pts): '+tardios;
-    Logger.log(msg);
-    SpreadsheetApp.getUi().alert(msg);
-    return {ok:true, inyectados:inyectados};
-
-  } catch(e){
-    SpreadsheetApp.getUi().alert('Error: '+e.toString());
-    return {ok:false, error:e.toString()};
-  }
 }
 
 function editarAsistencia(payload) {

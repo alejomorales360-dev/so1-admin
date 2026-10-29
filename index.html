@@ -1328,7 +1328,6 @@ td{padding:9px 10px;border-bottom:1px solid #f1f5f9;}
   if(typeof google!=='undefined'&&google.script&&google.script.run)return;
   if(!window.GAS_URL) window.GAS_URL='https://script.google.com/macros/s/AKfycbwsTsBNcM5vtXZsYBcwTNQ44eF57GVVvRyATpnw_8pw2Kf-nmAD_7i3EmI4k_fjnEpKWQ/exec';
   var GAS_URL=window.GAS_URL;
-  var AK='so1admin2026';
 var          READ=['obtenerDashboardAdmin','obtenerUsuariosAdmin','obtenerPendientesAdmin','obtenerResumenPendientes','obtenerRankingCompleto','obtenerAusenciasObligatorias','obtenerPuntajePorRut','obtenerPuntajeCompletoSocio','buscarSocioPorRut','obtenerEventoActivo','obtenerHistoricoBase','obtenerListaEventos','obtenerDetalleEvento','obtenerSociosCuotas','obtenerDashTesoreria','obtenerHistorialSocioTes','obtenerMovimientos','obtenerTodosLosSocios','obtenerEventoActivo','obtenerResumenAnualCuotas','obtenerDashYSocios','obtenerEventosDeComision'];
   function enc(obj){try{return encodeURIComponent(JSON.stringify(obj));}catch(e){return '';}}
   function makeRunner(){
@@ -1341,19 +1340,23 @@ var          READ=['obtenerDashboardAdmin','obtenerUsuariosAdmin','obtenerPendie
         if(prop in t)return t[prop];
         return function(){
           var args=Array.from(arguments);
-          var url=GAS_URL+'?action='+prop+'&key='+AK;
+          var url=GAS_URL+'?action='+prop+'&token='+encodeURIComponent(window.SO1_TOKEN||'');
           if(READ.indexOf(prop)>=0){
             if(args.length===1&&typeof args[0]==='string')url+='&arg='+encodeURIComponent(args[0]);
             else if(args.length===1&&args[0]&&typeof args[0]==='object'){Object.keys(args[0]).forEach(function(k){url+='&'+k+'='+encodeURIComponent(String(args[0][k]||''));});}
           }else{
             url+='&data='+enc(args.length===1?args[0]:args);
           }
-          var req=(prop==='leerListadoEscaneado')
-            ?fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:prop,key:AK,data:args[0]})})
+          /* La contraseña y los archivos van por POST, nunca en la URL */
+          var req=(prop==='leerListadoEscaneado'||prop==='autenticarUsuario')
+            ?fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:prop,token:window.SO1_TOKEN||'',data:args[0]})})
             :fetch(url);
           req
             .then(function(r){return r.json();})
-            .then(function(d){if(_s)_s(d);})
+            .then(function(d){
+              if(d&&d.sesionExpirada&&window.SO1_TOKEN){alert('Tu sesión expiró. Vuelve a ingresar.');location.reload();return;}
+              if(_s)_s(d);
+            })
             .catch(function(e){if(_f)_f({message:String(e)});});
         };
       }
@@ -1618,7 +1621,7 @@ function doLogin(){
     .withSuccessHandler(function(d){
       btn.disabled=false; btn.textContent='Ingresar';
       if(!d||!d.ok){ge('loginErr').textContent=d&&d.error?d.error:'Credenciales incorrectas';ge('loginErr').style.display='block';return;}
-      currentUser=u; userRole=d.rol; userTipo=d.tipo||'';
+      currentUser=u; userRole=d.rol; userTipo=d.tipo||''; window.SO1_TOKEN=d.token||'';
       currentUserTabs=d.tabs||[0,6]; if(d.rol==='admin' && !currentUserTabs.includes(9)) currentUserTabs.push(9); currentUserNombre=d.nombreMostrar||u;
       ge('pgLogin').style.display='none'; ge('pgApp').style.display='block';
       document.querySelector('.topbar span').textContent=currentUserNombre.toUpperCase();
@@ -2471,7 +2474,7 @@ function subirDocumentoAdmin(dataId,nombreId,statusId,rutaCompleta,ignorado,onSu
   ge(statusId).textContent='Subiendo...';ge(statusId).style.color='#64748b';
   var ticketId='adm_'+Date.now()+'_'+Math.floor(Math.random()*9999);
   var mime=nombre.match(/\.pdf$/i)?'application/pdf':nombre.match(/\.png$/i)?'image/png':'image/jpeg';
-  var payload={action:'subirArchivo',key:'so1admin2026',base64:base64,mimeType:mime,nombre:nombre,ticketId:ticketId,rutaCompleta:rutaCompleta};
+  var payload={action:'subirArchivo',token:window.SO1_TOKEN||'',base64:base64,mimeType:mime,nombre:nombre,ticketId:ticketId,rutaCompleta:rutaCompleta};
   function polling(){
     ge(statusId).textContent='Procesando en Drive...';
     var tr=0,tm=setInterval(function(){
@@ -4669,7 +4672,7 @@ function _pbmConfirmarComoReuniones(){
     cerrarImportarPuntajeBase();
   }
   if(window.__GAS_POLYFILL){
-    fetch(window.GAS_URL||'', { method:'POST', body: JSON.stringify({action:'importarReunionesMatriz', key:'so1admin2026', data:{eventos:eventos, creadoPor:currentUser||'', rol:userRole||''}}) })
+    fetch(window.GAS_URL||'', { method:'POST', body: JSON.stringify({action:'importarReunionesMatriz', token:window.SO1_TOKEN||'', data:{eventos:eventos, creadoPor:currentUser||'', rol:userRole||''}}) })
       .then(function(r){ return r.json(); })
       .then(pintarResultadoPbmReu)
       .catch(function(e){ btn.disabled=false;btn.textContent='Confirmar e importar'; flash('Error de red: '+e.message,false); });
@@ -4754,7 +4757,7 @@ function confirmarImportarReuniones(){
     ge('impReunResultado').innerHTML = html;
     flash('Importación completa',true);
   }
-  var payloadImport = {action:'importarReunionesMatriz', key:'so1admin2026', data:{eventos:__impReunData.eventos}};
+  var payloadImport = {action:'importarReunionesMatriz', token:window.SO1_TOKEN||'', data:{eventos:__impReunData.eventos}};
   if(window.__GAS_POLYFILL){
     fetch(window.GAS_URL||'', { method:'POST', body: JSON.stringify(payloadImport) })
       .then(function(r){ return r.json(); })
@@ -5808,7 +5811,7 @@ function confirmarImportarEventoUnico(){
   }
   var payloadImp = { evId:__impEvUnico.evId, marcas:__impEvUnico.marcas };
   if(window.__GAS_POLYFILL){
-    fetch(window.GAS_URL||'', { method:'POST', body: JSON.stringify({action:'importarAsistenciaEvento', key:'so1admin2026', data:payloadImp}) })
+    fetch(window.GAS_URL||'', { method:'POST', body: JSON.stringify({action:'importarAsistenciaEvento', token:window.SO1_TOKEN||'', data:payloadImp}) })
       .then(function(r){ return r.json(); }).then(pintar)
       .catch(function(e){ ge('impEvUnicoResultado').innerHTML='<span style="color:#ef4444">Error de red: '+e.message+'</span>'; });
   } else {

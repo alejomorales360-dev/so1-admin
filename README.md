@@ -46,3 +46,20 @@ Cada push a `main` publica `index.html` en GitHub Pages mediante `.github/workfl
 https://alejomorales360-dev.github.io/so1-admin/
 
 La página llama al backend de Apps Script por `fetch`. Si cambias `Codigo.gs`, hay que volver a desplegarlo en Apps Script; los cambios en `index.html` se publican solos.
+
+## Configuración del backend (Apps Script)
+
+`Codigo.gs` no guarda claves ni IDs en el código: cada asamblea los define en
+**Configuración del proyecto → Propiedades del script**:
+
+| Propiedad | Para qué |
+|---|---|
+| `SPREADSHEET_ID` | ID de la planilla de la asamblea (obligatoria) |
+| `CLAVE_ADMIN_INICIAL` | Contraseña del usuario `admin` al crear la hoja USUARIOS en una asamblea nueva |
+| `CLAVE_API` | Clave para integraciones, como el panel del super-administrador (opcional) |
+| `ANTHROPIC_API_KEY` | Lectura de listas escaneadas (opcional) |
+
+La app Admin inicia sesión con usuario y contraseña y recibe un token de sesión
+(válido 6 horas sin uso). Las contraseñas se guardan cifradas (SHA-256 con sal);
+para cifrar las que sigan en texto plano, ejecuta una vez `protegerClavesExistentes`
+desde el editor de Apps Script.
