@@ -317,8 +317,8 @@ function normalize(o){
 function load(){try{const t=localStorage.getItem(STORE);if(t){const o=JSON.parse(t);if(o&&o.walls)return normalize(o)}}catch(e){}return null}
 function save(){if(DB)DB.plans[DB.cur]=S;try{localStorage.setItem(STORE2,JSON.stringify(DB))}catch(e){}}
 function loadDB(){
-  try{const t=localStorage.getItem(STORE2);if(t){const o=JSON.parse(t);if(o&&o.plans&&o.plans.actual){o.plans.actual=normalize(o.plans.actual);o.plans.proyeccion=o.plans.proyeccion?normalize(o.plans.proyeccion):myProjection();if(!o.plans[o.cur])o.cur='proyeccion';return o}}}catch(e){}
-  const actual=load();const proy=myProjection();return {cur:'proyeccion',plans:{actual:actual||myHouse(),proyeccion:proy}};
+  try{const t=localStorage.getItem(STORE2);if(t){const o=JSON.parse(t);if(o&&o.plans&&o.plans.actual){o.plans.actual=normalize(o.plans.actual);o.plans.proyeccion=(o.plans.proyeccion&&o.projVer===2)?normalize(o.plans.proyeccion):myProjection();o.projVer=2;if(!o.plans[o.cur])o.cur='proyeccion';return o}}}catch(e){}
+  const actual=load();const proy=myProjection();return {cur:'proyeccion',projVer:2,plans:{actual:actual||myHouse(),proyeccion:proy}};
 }
 const PLANS={actual:'Casa actual',proyeccion:'Proyección'};
 
@@ -429,7 +429,8 @@ function myProjection(){
   myHouse();S.name='Proyección';
   S.rooms=S.rooms.filter(r=>r.name!=='Patio trasero'&&r.name!=='Patio lateral');
   const R=(name,x,y,w,h,floor,extra)=>{const r=Object.assign({id:uid(),name,x,y,w,h,floor,color:FLOORS[floor].color,outdoor:true},extra||{});S.rooms.push(r);return r};
-  R('Área verde',0,0,300,1350,'pasto',{note:'Ex estacionamiento, con pasto y plantas, sin techo'});
+  R('Área verde',0,0,300,365,'pasto',{note:'Hoy baldosas de cemento con plantas; pasa a pasto y plantas, sin techo'});
+  R('Patio lateral',0,365,300,985,'baldosa',{color:'#9b4038',note:'Cerámica roja, se mantiene como está'});
   R('Quincho',300,0,475,170,'baldosa',{roof:'solid',roofH:260,note:'Techado, con parrilla, mesón, barra y taca-taca'});
   R('Terraza pérgola',300,170,475,195,'madera',{roof:'pergola',roofH:250,note:'Deck de madera bajo pérgola'});
   const F=(x1,y1,x2,y2)=>S.walls.push({id:uid(),x1,y1,x2,y2,t:10,h:200,color:'#2e2e2e',roomId:null,side:null});
@@ -448,12 +449,11 @@ function myProjection(){
   I('sofa','Lounge exterior',160,80,75,722,270,90,'#8a8f7c');
   I('table','Mesa de centro',90,50,40,655,270,90);
   I('plant','Planta',45,45,120,330,215,0);
-  // Área verde
-  I('plant','Árbol',110,110,280,150,120,0);
-  I('plant','Árbol',90,90,240,170,560,0);
-  [300,420,700,820,980,1100,1220].forEach((y,i)=>I('plant','Planta',45+(i%3)*10,45+(i%3)*10,70+(i%3)*30,30,y,0));
-  I('planter','Jardinera',120,45,45,33,500,90);I('planter','Jardinera',120,45,45,33,1000,90);
-  I('box','Banca',150,45,45,255,950,90,'#a07850');
+  // Área verde (cuadrado junto al quincho)
+  I('plant','Árbol',100,100,260,70,70,0);
+  I('planter','Jardinera',120,45,45,200,30,0);
+  I('planter','Jardinera',120,45,45,33,220,90);
+  [[30,320,50,90],[150,190,60,120],[260,120,45,70],[110,330,40,60]].forEach(([x,y,w,h])=>I('plant','Planta',w,w,h,x,y,0));
   return S;
 }
 
@@ -770,7 +770,7 @@ function renderPanel(){
       <li>Dibuja el ambiente y en el panel escribe la <b>medida interior</b>. El grosor se suma solo.</li>
       <li>Para puertas y ventanas anota el ancho y la distancia desde la esquina.</li>
       <li>Usa «Medir» para comprobar distancias en el plano.</li></ol></details>
-    <p class="note">${DB.cur==='proyeccion'?'Proyección: quincho techado con parrilla, mesón, barra y taca-taca; terraza con pérgola; y área verde sin techo donde hoy está el estacionamiento. Lo que cambies aquí no toca el plano «Casa actual».':'Medidas de tu casa tomadas del plano de regularización. El cobertizo y la zona de planchado quedaron como patio sin techo, y el ex dormitorio como bodega. El 2º piso de la vivienda existente no está dibujado en esos planos.'}</p>`;
+    <p class="note">${DB.cur==='proyeccion'?'Proyección: quincho techado con parrilla, mesón, barra y taca-taca; terraza con pérgola; y área verde con pasto y plantas, sin techo, en el cuadrado junto al quincho. Lo que cambies aquí no toca el plano «Casa actual».':'Medidas de tu casa tomadas del plano de regularización. El cobertizo y la zona de planchado quedaron como patio sin techo, y el ex dormitorio como bodega. El 2º piso de la vivienda existente no está dibujado en esos planos.'}</p>`;
   }else if(sel.k==='wall'){const g=wallGeom(el);let ang=-g.ang*180/Math.PI;if(ang<0)ang+=360;
     h+=`<div><div class="eyebrow">Muro</div><h2 class="num">${fmt(g.L)}</h2></div>
     <div class="fields">${num('len','Largo (cm)',g.L)}${num('ang','Ángulo (°)',ang,{step:1})}${num('t','Grosor (cm)',el.t)}${num('h','Altura (cm)',el.h)}${num('x1','Inicio X (cm)',el.x1)}${num('y1','Inicio Y (cm)',el.y1)}${col('color','Color',el.color)}</div>
