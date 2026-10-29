@@ -317,8 +317,8 @@ function normalize(o){
 function load(){try{const t=localStorage.getItem(STORE);if(t){const o=JSON.parse(t);if(o&&o.walls)return normalize(o)}}catch(e){}return null}
 function save(){if(DB)DB.plans[DB.cur]=S;try{localStorage.setItem(STORE2,JSON.stringify(DB))}catch(e){}}
 function loadDB(){
-  try{const t=localStorage.getItem(STORE2);if(t){const o=JSON.parse(t);if(o&&o.plans&&o.plans.actual){o.plans.actual=normalize(o.plans.actual);o.plans.proyeccion=(o.plans.proyeccion&&o.projVer===3)?normalize(o.plans.proyeccion):myProjection();o.projVer=3;if(!o.plans[o.cur])o.cur='proyeccion';return o}}}catch(e){}
-  const actual=load();const proy=myProjection();return {cur:'proyeccion',projVer:3,plans:{actual:actual||myHouse(),proyeccion:proy}};
+  try{const t=localStorage.getItem(STORE2);if(t){const o=JSON.parse(t);if(o&&o.plans&&o.plans.actual){o.plans.actual=normalize(o.plans.actual);o.plans.proyeccion=(o.plans.proyeccion&&o.projVer===4)?normalize(o.plans.proyeccion):myProjection();o.projVer=4;if(!o.plans[o.cur])o.cur='proyeccion';return o}}}catch(e){}
+  const actual=load();const proy=myProjection();return {cur:'proyeccion',projVer:4,plans:{actual:actual||myHouse(),proyeccion:proy}};
 }
 const PLANS={actual:'Casa actual',proyeccion:'Proyección'};
 
@@ -485,6 +485,25 @@ function myProjection(){
   I('heater','Estufa a leña',60,50,90,45,890,270);
   I('sofa','Sillón',85,85,85,150,890,180);
   I('plant','Planta',45,45,120,35,600,0);
+  S.rooms.find(r=>r.name==='Living').name='Sala de estar';
+  // Cocina antigua → comedor (se retira el muro hacia la escalera)
+  const ck=S.rooms.find(r=>r.name==='Cocina');Object.assign(ck,{name:'Comedor',floor:'madera',color:FLOORS.madera.color,note:'Ex cocina antigua, abierta al living'});
+  const kw=S.walls.find(w=>w.x1===300&&w.y1===932&&w.x2===520&&w.y2===932);S.walls=S.walls.filter(w=>w!==kw);
+  S.items=S.items.filter(i=>!(i.x>300&&i.x<600&&i.y>695&&i.y<932));
+  I('table','Mesa comedor',120,80,75,450,815,0);
+  [420,480].forEach(x=>{I('chair','Silla',45,50,90,x,758,0);I('chair','Silla',45,50,90,x,872,180)});
+  // Puerta + ventana de la cocina → ventanal corredero hacia la sala de estar
+  const kd=S.openings.find(o=>o.type==='door'&&Math.abs(o.off-205)<1&&S.walls.find(w=>w.id===o.wallId&&w.x1===300&&w.y1===695));
+  if(kd)S.openings=S.openings.filter(o=>o!==kd);
+  addOpeningAt('slider',300,840,180,{h:210});
+  // Zona escalera → living con estufa
+  const lv=S.rooms.find(r=>r.name==='Living y escalera');Object.assign(lv,{name:'Living',note:'Living con escalera y estufa'});
+  I('rug','Alfombra',200,140,1,580,1150,90);
+  I('sofa','Sofá 3 cuerpos',210,90,85,457,1150,270);
+  I('table','Mesa de centro',110,60,40,580,1150,90);
+  I('tv','Mueble TV + televisor',160,45,50,742,1150,90);
+  I('heater','Estufa a leña',60,50,90,735,1300,90);
+  I('sofa','Sillón',85,85,85,560,1290,0);
   return S;
 }
 
@@ -803,7 +822,7 @@ function renderPanel(){
       <li>Dibuja el ambiente y en el panel escribe la <b>medida interior</b>. El grosor se suma solo.</li>
       <li>Para puertas y ventanas anota el ancho y la distancia desde la esquina.</li>
       <li>Usa «Medir» para comprobar distancias en el plano.</li></ol></details>
-    <p class="note">${DB.cur==='proyeccion'?'Proyección: quincho techado con parrilla, mesón, barra y taca-taca; terraza con pérgola; área verde con pasto y plantas junto al quincho; la bodega pasa a cocina abierta con isla, y la cerámica roja hasta la puerta de la cocina pasa a living con TV, estufa y ventanal al área verde. Lo que cambies aquí no toca el plano «Casa actual».':'Medidas de tu casa tomadas del plano de regularización. El cobertizo y la zona de planchado quedaron como patio sin techo, y el ex dormitorio como bodega. El 2º piso de la vivienda existente no está dibujado en esos planos.'}</p>`;
+    <p class="note">${DB.cur==='proyeccion'?'Proyección: quincho techado con parrilla, mesón, barra y taca-taca; terraza con pérgola; área verde con pasto y plantas junto al quincho; la bodega pasa a cocina abierta con isla, la cerámica roja pasa a sala de estar con TV, estufa y ventanal al área verde; la cocina antigua pasa a comedor abierto al living de la escalera, que suma otra estufa; y la puerta y ventana de la cocina antigua se reemplazan por un ventanal corredero. Lo que cambies aquí no toca el plano «Casa actual».':'Medidas de tu casa tomadas del plano de regularización. El cobertizo y la zona de planchado quedaron como patio sin techo, y el ex dormitorio como bodega. El 2º piso de la vivienda existente no está dibujado en esos planos.'}</p>`;
   }else if(sel.k==='wall'){const g=wallGeom(el);let ang=-g.ang*180/Math.PI;if(ang<0)ang+=360;
     h+=`<div><div class="eyebrow">Muro</div><h2 class="num">${fmt(g.L)}</h2></div>
     <div class="fields">${num('len','Largo (cm)',g.L)}${num('ang','Ángulo (°)',ang,{step:1})}${num('t','Grosor (cm)',el.t)}${num('h','Altura (cm)',el.h)}${num('x1','Inicio X (cm)',el.x1)}${num('y1','Inicio Y (cm)',el.y1)}${col('color','Color',el.color)}</div>
