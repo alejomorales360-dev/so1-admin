@@ -317,8 +317,8 @@ function normalize(o){
 function load(){try{const t=localStorage.getItem(STORE);if(t){const o=JSON.parse(t);if(o&&o.walls)return normalize(o)}}catch(e){}return null}
 function save(){if(DB)DB.plans[DB.cur]=S;try{localStorage.setItem(STORE2,JSON.stringify(DB))}catch(e){}}
 function loadDB(){
-  try{const t=localStorage.getItem(STORE2);if(t){const o=JSON.parse(t);if(o&&o.plans&&o.plans.actual){o.plans.actual=o.actVer===2?normalize(o.plans.actual):myHouse();o.actVer=2;o.plans.proyeccion=(o.plans.proyeccion&&o.projVer===6)?normalize(o.plans.proyeccion):myProjection();o.projVer=6;if(!o.plans[o.cur])o.cur='proyeccion';return o}}}catch(e){}
-  const actual=load();const proy=myProjection();return {cur:'proyeccion',projVer:6,actVer:2,plans:{actual:actual||myHouse(),proyeccion:proy}};
+  try{const t=localStorage.getItem(STORE2);if(t){const o=JSON.parse(t);if(o&&o.plans&&o.plans.actual){o.plans.actual=o.actVer===2?normalize(o.plans.actual):myHouse();o.actVer=2;o.plans.proyeccion=(o.plans.proyeccion&&o.projVer===7)?normalize(o.plans.proyeccion):myProjection();o.projVer=7;if(!o.plans[o.cur])o.cur='proyeccion';return o}}}catch(e){}
+  const actual=load();const proy=myProjection();return {cur:'proyeccion',projVer:7,actVer:2,plans:{actual:actual||myHouse(),proyeccion:proy}};
 }
 const PLANS={actual:'Casa actual',proyeccion:'Proyección'};
 
@@ -367,7 +367,7 @@ function addOpeningAt(type,x,y,width,extra){
   const hit=nearestWall(x,y,Math.max(25,12/view.z));if(!hit)return null;
   const w=hit.w,L=wlen(w);let wd=width||(type==='door'?80:120);wd=Math.min(wd,L-10);if(wd<30)return null;
   const g=S.settings.snap;const off=clamp(Math.round(hit.t*L/g)*g,wd/2,L-wd/2);
-  const o=Object.assign({id:uid(),type,wallId:w.id,off,w:wd,h:type==='door'?205:110,sill:type==='door'?0:100,flipH:false,flipS:false},extra||{});
+  const o=Object.assign({id:uid(),type,wallId:w.id,off,w:wd,h:type==='door'?205:type==='slider'?210:110,sill:type==='window'?100:0,flipH:false,flipS:false},extra||{});
   S.openings.push(o);return o;
 }
 
@@ -466,7 +466,7 @@ function myProjection(){
   const NW=(x1,y1,x2,y2)=>S.walls.push({id:uid(),x1,y1,x2,y2,t:15,h:240,color:'#f2efe8',roomId:null,side:null});
   NW(0,365,300,365);NW(0,950,300,950);
   addOpeningAt('slider',150,365,280,{h:215});
-  addOpeningAt('door',150,950,90,{flipS:true});
+  addOpeningAt('slider',170,950,180,{h:210});
   // Cocina nueva
   I('fridge','Refrigerador',70,70,180,725,412,90);
   I('counter','Mueble cocina',120,60,90,735,507,90);
@@ -483,7 +483,6 @@ function myProjection(){
   I('table','Mesa de centro',110,60,40,160,740,90);
   I('tv','Mueble TV + televisor',160,45,50,270,740,90);
   I('heater','Estufa a leña',60,50,90,45,890,270);
-  I('sofa','Sillón',85,85,85,150,890,180);
   I('plant','Planta',45,45,120,35,600,0);
   S.rooms.find(r=>r.name==='Living').name='Sala de estar';
   S.openings=S.openings.filter(o=>!(o.type==='door'&&S.walls.some(w=>w.id===o.wallId&&w.x1===300&&w.y1===365&&w.x2===775&&w.y2===365)));
