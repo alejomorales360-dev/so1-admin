@@ -40,10 +40,18 @@ const SH_ASISTENCIAS = SH_ASIST;  // alias — evita ReferenceError
 // ═══ CONFIGURACIÓN POR ASAMBLEA Y SESIONES ═══
 // Cada asamblea guarda su configuración en Configuración del proyecto → Propiedades del script:
 //   SPREADSHEET_ID       ID de la planilla de la asamblea (obligatoria)
+//   NOMBRE_ASAMBLEA      nombre corto, p. ej. SO2; nombra sus carpetas en Drive (por defecto SO1)
 //   CLAVE_ADMIN_INICIAL  contraseña del usuario admin al crear la hoja USUARIOS (solo instalación)
 //   CLAVE_API            clave para integraciones, p. ej. el super-administrador (opcional)
 //   ANTHROPIC_API_KEY    lectura de listas escaneadas (opcional)
 function _prop(k){ return PropertiesService.getScriptProperties().getProperty(k) || ''; }
+// Nombre de la asamblea (NOMBRE_ASAMBLEA); separa sus carpetas en Drive de las de otras asambleas.
+function _nombreAsamblea(){ return _prop('NOMBRE_ASAMBLEA') || 'SO1'; }
+function _carpetaDrive(sufijo){
+  var nombre = _nombreAsamblea() + '_' + sufijo;
+  var it = DriveApp.getFoldersByName(nombre);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(nombre);
+}
 function _ssId(){
   var id = _prop('SPREADSHEET_ID');
   if (!id) throw new Error('Falta la propiedad SPREADSHEET_ID en la configuración del script');
@@ -102,7 +110,7 @@ function doGet(e){
     try{out=HtmlService.createHtmlOutputFromFile(['admin','tesoreria'].includes(page)?page:'index');}
     catch(ex){out=HtmlService.createHtmlOutputFromFile('index');}
     const t=/<title>([^<']*)<\/title>/i.exec(out.getContent());
-    return out.setTitle(t&&t[1].trim()?t[1].trim():'SO1')
+    return out.setTitle(t&&t[1].trim()?t[1].trim():_nombreAsamblea())
       .addMetaTag('viewport','width=device-width, initial-scale=1')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
@@ -282,8 +290,7 @@ function subirArchivoDesdeGet(payload) {
     if(!payload||!payload.base64||!payload.ticketId)
       return {ok:false, error:'Faltan parametros'};
 
-    var iter = DriveApp.getFoldersByName('SO1_Respaldos');
-    var carpeta = iter.hasNext() ? iter.next() : DriveApp.createFolder('SO1_Respaldos');
+    var carpeta = _carpetaDrive('Respaldos');
 
     var partes = [];
     if(payload.rutaCompleta){
@@ -328,8 +335,7 @@ function subirArchivoDesdeServer(payload) {
     if(!payload||!payload.base64||!payload.ticketId)
       return {ok:false, error:'Faltan parametros'};
 
-    var iter = DriveApp.getFoldersByName('SO1_Respaldos');
-    var carpeta = iter.hasNext() ? iter.next() : DriveApp.createFolder('SO1_Respaldos');
+    var carpeta = _carpetaDrive('Respaldos');
 
     var partes = [];
     if(payload.rutaCompleta){
@@ -3324,8 +3330,7 @@ function _rolYTipoDeUsuario(usuario) {
 function subirFotoSocio(payload) {
   try {
     if (!payload || !payload.base64 || !payload.rut) return { ok:false, error:'Faltan datos' };
-    var iter = DriveApp.getFoldersByName('SO1_Fotos_Socios');
-    var carpeta = iter.hasNext() ? iter.next() : DriveApp.createFolder('SO1_Fotos_Socios');
+    var carpeta = _carpetaDrive('Fotos_Socios');
     var blob = Utilities.newBlob(Utilities.base64Decode(payload.base64), payload.mimeType||'image/jpeg', 'foto_'+lRut(payload.rut)+'.jpg');
     var file = carpeta.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
