@@ -693,6 +693,26 @@ td{padding:9px 10px;border-bottom:1px solid #f1f5f9;}
   <div id="socList"></div>
 </div>
 
+<!-- GAM (enlace externo) -->
+<div id="s10" class="pan">
+  <div class="card card-dark" style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div>
+        <h3>&#127760; GAM</h3>
+        <p style="font-size:13px;color:rgba(255,255,255,.5)">Acceso directo a <span id="gamUrlTxt"></span></p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="recargarGam()" style="background:rgba(255,255,255,.12);color:white;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer">&#8635; Recargar</button>
+        <button onclick="abrirGamExterno()" style="background:#22c55e;color:white;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer">&#8599; Abrir en pestaña nueva</button>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <iframe id="gamFrame" title="GAM" referrerpolicy="no-referrer-when-downgrade" allow="fullscreen; clipboard-read; clipboard-write" style="width:100%;height:calc(100vh - 230px);min-height:420px;border:0;display:block;background:#f8fafc"></iframe>
+  </div>
+  <p style="font-size:11px;color:#94a3b8;padding:0 2px">Si el contenido aparece en blanco, el sitio no permite mostrarse dentro de otra página: usa “Abrir en pestaña nueva”.</p>
+</div>
+
 <!-- ACCESOS (admin) -->
 <div id="s8" class="pan">
   <div class="card card-dark" style="margin-bottom:10px">
@@ -1439,6 +1459,7 @@ function renderMenu(){
     {id:6,label:'Eventos'},
     {id:7,label:'⏳ Aprobar',min:7},
     {id:8,label:'🔑 Accesos',min:8},
+    {id:10,label:'🌐 GAM'},
   ];
   var menu=document.querySelector('.menu');
   menu.innerHTML='';
@@ -1619,7 +1640,7 @@ function doLogin(){
       btn.disabled=false; btn.textContent='Ingresar';
       if(!d||!d.ok){ge('loginErr').textContent=d&&d.error?d.error:'Credenciales incorrectas';ge('loginErr').style.display='block';return;}
       currentUser=u; userRole=d.rol; userTipo=d.tipo||'';
-      currentUserTabs=d.tabs||[0,6]; if(d.rol==='admin' && !currentUserTabs.includes(9)) currentUserTabs.push(9); currentUserNombre=d.nombreMostrar||u;
+      currentUserTabs=d.tabs||[0,6]; if(d.rol==='admin'){ [9,10].forEach(function(t){ if(!currentUserTabs.includes(t)) currentUserTabs.push(t); }); } currentUserNombre=d.nombreMostrar||u;
       ge('pgLogin').style.display='none'; ge('pgApp').style.display='block';
       document.querySelector('.topbar span').textContent=currentUserNombre.toUpperCase();
       renderMenu();
@@ -1637,8 +1658,8 @@ ge('lPass').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();
 function cerrarSesion(){if(confirm('¿Cerrar sesión?')){location.reload();}}
 
 function ir(n,btn){
-  if(n!==9 && !currentUserTabs.includes(n)){flash('Sin acceso a esta sección',false);return;}
-  for(var i=0;i<10;i++) ge('s'+i) && (ge('s'+i).className='pan'+(i===n?' on':''));
+  if(n!==9 && n!==10 && !currentUserTabs.includes(n)){flash('Sin acceso a esta sección',false);return;}
+  for(var i=0;i<=10;i++) ge('s'+i) && (ge('s'+i).className='pan'+(i===n?' on':''));
   document.querySelectorAll('.menu button').forEach(function(b){b.classList.remove('on');});
   btn.classList.add('on');
   if(n===3) cargarRank();
@@ -1648,8 +1669,19 @@ function ir(n,btn){
   if(n===0) checkPendientes();
   if(n===8) cargarAccesos();
   if(n===9 && !_sociosLoaded) cargarSocios();
+  if(n===10) cargarGam();
   window.scrollTo(0,0);
 }
+
+/* ── GAM: sitio externo embebido ── */
+var GAM_URL='https://gam.onl/#main---9';
+function cargarGam(){
+  ge('gamUrlTxt').textContent=GAM_URL;
+  var f=ge('gamFrame');
+  if(!f.getAttribute('src')) f.setAttribute('src',GAM_URL);
+}
+function recargarGam(){ var f=ge('gamFrame'); f.setAttribute('src','about:blank'); setTimeout(function(){f.setAttribute('src',GAM_URL);},50); }
+function abrirGamExterno(){ window.open(GAM_URL,'_blank','noopener'); }
 
 function sc(el,g){
   document.querySelectorAll('#'+g+' button.chip').forEach(function(c){c.classList.remove('on');});
@@ -4905,7 +4937,7 @@ function renderEvDet(bq){
 }
 /* ═══ ACCESOS ═══ */
 var _accEditId=null, _accUsers=[];
-var TAB_NAMES={0:'Inicio',1:'Marcar eventos',2:'Base histórica',3:'Ranking',4:'Ausencias',5:'Buscar socio',6:'Eventos',9:'Socios'};
+var TAB_NAMES={0:'Inicio',1:'Marcar eventos',2:'Base histórica',3:'Ranking',4:'Ausencias',5:'Buscar socio',6:'Eventos',9:'Socios',10:'GAM'};
 var ROL_COL={admin:'#7c3aed',comision:'#3b82f6',tesoreria:'#16a34a'};
 var ROL_BG ={admin:'#f3e8ff',comision:'#eff6ff',tesoreria:'#dcfce7'};
 
@@ -4965,7 +4997,7 @@ function abrirFormUsuario(id){
   onAccRolChange();
   // Checkboxes tabs
   var wrap=ge('accTabsWrap'); wrap.innerHTML='';
-  [0,1,2,3,4,5,6,9].forEach(function(t){
+  [0,1,2,3,4,5,6,9,10].forEach(function(t){
     var checked=u&&u.tabs?u.tabs.includes(t):t===0||t===6;
     var disabled=t===0; // Inicio siempre
     var div=document.createElement('div');
@@ -4995,9 +5027,9 @@ function guardarUsuarioAdmin(){
   if(!_accEditId&&!pwd){msg.style.display='block';msg.style.background='#fee2e2';msg.style.color='#b91c1c';msg.textContent='Ingresa la contraseña';return;}
   // Recoger tabs seleccionados
   var tabs=[0]; // Inicio siempre
-  [1,2,3,4,5,6,9].forEach(function(t){var cb=ge('tab_'+t);if(cb&&cb.checked&&!tabs.includes(t))tabs.push(t);});
+  [1,2,3,4,5,6,9,10].forEach(function(t){var cb=ge('tab_'+t);if(cb&&cb.checked&&!tabs.includes(t))tabs.push(t);});
   // Tabs 7 y 8 solo para admin
-  if(rol==='admin'){tabs=[0,1,2,3,4,5,6,7,8,9];}
+  if(rol==='admin'){tabs=[0,1,2,3,4,5,6,7,8,9,10];}
   var btn=ge('btnAccSave'); btn.disabled=true; btn.textContent='Guardando...';
   var data={id:_accEditId, usuario:usr, password:pwd, rol:rol, tipo:tipo, tabs:tabs, nombreMostrar:nom};
   var fn=_accEditId?'editarUsuarioAdmin':'crearUsuarioAdmin';
