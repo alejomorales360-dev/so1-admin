@@ -1858,6 +1858,40 @@ function _verificarClave(clave, guardada) {
   return String(clave) === guardada; // contraseña antigua en texto plano; se migra al iniciar sesión
 }
 
+// ═══ INSTALACIÓN DE UNA ASAMBLEA NUEVA ═══
+// Ejecutar una vez desde el editor, con SPREADSHEET_ID, NOMBRE_ASAMBLEA y CLAVE_ADMIN_INICIAL
+// ya configuradas. Crea las hojas que falten con sus encabezados; no toca las que ya existen.
+function instalarAsamblea() {
+  var ss = getSS();
+  var HOJAS = {
+    SOCIOS:            ['ID','RUT','NOMBRE','TELEFONO','EMAIL','ESTADO','FECHA_INGRESO','DIRECCION','FECHA_NACIMIENTO','FOTO_URL'],
+    EVENTOS:           ['ID','NOMBRE','TIPO','FECHA','PTS_COMPLETO','PTS_PARCIAL','TIMESTAMP','HORA_INICIO','HORA_TERMINO','CREADO_POR','ESTADO'],
+    ASISTENCIAS:       ['ID','ID_EVENTO','RUT_TITULAR','TIPO_ASISTENCIA','PUNTAJE','NOMBRE_REPRESENTANTE','RUT_REPRESENTANTE','OBSERVACION','TIMESTAMP','EVENTO','FECHA','TIPO_EVENTO'],
+    PUNTAJE_BASE:      ['ID','RUT','AÑO','CONCEPTO','PUNTOS','OBSERVACION','TIMESTAMP','ESTADO'],
+    CUOTAS:            ['ID','RUT','NOMBRE','MES','MONTO','FECHA_PAGO','A_TIEMPO','PTS_ASIGNADOS','OBSERVACION','TIMESTAMP','ARCHIVO_URL'],
+    MOVIMIENTOS:       ['ID','TIPO','CONCEPTO','MONTO','FECHA','CATEGORIA','RUT_SOCIO','RESPONSABLE','TIMESTAMP','ARCHIVO_URL'],
+    COMISIONES:        ['ID','NOMBRE','TIPO','DESCRIPCION','ACTIVA'],
+    COMISION_MIEMBROS: ['ID','ID_COMISION','RUT_SOCIO','CARGO','FECHA_INICIO','ACTIVO']
+  };
+  var creadas = [];
+  Object.keys(HOJAS).forEach(function(nombre){
+    if (ss.getSheetByName(nombre)) return;
+    var sh = ss.insertSheet(nombre);
+    sh.appendRow(HOJAS[nombre]);
+    sh.getRange(1, 1, 1, HOJAS[nombre].length).setFontWeight('bold').setBackground('#1e293b').setFontColor('white');
+    sh.setFrozenRows(1);
+    creadas.push(nombre);
+  });
+  if (!ss.getSheetByName('CONFIG')) {
+    actualizarConfig('max_socios', 160);
+    actualizarConfig('cupo_estacionamiento', 116);
+    creadas.push('CONFIG');
+  }
+  if (!ss.getSheetByName('USUARIOS')) { getSheetUsuarios_(); creadas.push('USUARIOS'); }
+  Logger.log('Asamblea ' + _nombreAsamblea() + ' · hojas creadas: ' + (creadas.join(', ') || 'ninguna (ya existían)'));
+  return creadas;
+}
+
 // Ejecutar una vez desde el editor para proteger todas las contraseñas que sigan en texto plano.
 function protegerClavesExistentes() {
   var sh = getSheetUsuarios_();
