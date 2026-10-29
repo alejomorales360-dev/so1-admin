@@ -296,10 +296,10 @@ const FLOORS={
 };
 const KC={bed:'#5b7fa6',sofa:'#7b8a7a',table:'#a07850',desk:'#a07850',chair:'#a07850',wardrobe:'#cdb89c',shelf:'#a07850',
   counter:'#e7e3dc',stove:'#d6d6d6',fridge:'#dfe3e6',washer:'#eceeef',toilet:'#f4f4f2',sink:'#f4f4f2',tub:'#f4f4f2',
-  shower:'#f4f4f2',plant:'#4f7a4a',rug:'#b9a58b',tv:'#4a4a4a',box:'#8a6a4c',stairs:'#9c7b5b',car:'#8d99a6',grill:'#8c4a32',bar:'#a0714a',stool:'#3b3b3b',foosball:'#7a5236',planter:'#8a6a4c'};
+  shower:'#f4f4f2',plant:'#4f7a4a',rug:'#b9a58b',tv:'#4a4a4a',box:'#8a6a4c',stairs:'#9c7b5b',car:'#8d99a6',grill:'#8c4a32',bar:'#a0714a',stool:'#3b3b3b',foosball:'#7a5236',planter:'#8a6a4c',heater:'#2b2b2b'};
 const LIB=[
  {cat:'Dormitorio',items:[['bed','Cama 1 plaza',90,190,50],['bed','Cama 1½ plaza',105,190,50],['bed','Cama 2 plazas',140,190,50],['bed','Cama Queen',160,200,50],['bed','Cama King',180,200,50],['box','Velador',45,40,55],['wardrobe','Clóset',180,60,220],['desk','Escritorio',120,60,75]]},
- {cat:'Living y comedor',items:[['sofa','Sofá 3 cuerpos',210,90,85],['sofa','Sofá 2 cuerpos',160,90,85],['sofa','Sillón',85,85,85],['table','Mesa de centro',110,60,45],['tv','Mueble TV',160,45,50],['table','Comedor 4 personas',120,80,75],['table','Comedor 6 personas',180,90,75],['chair','Silla',45,50,90],['shelf','Estante',90,35,190],['rug','Alfombra',200,140,1],['plant','Planta',45,45,120]]},
+ {cat:'Living y comedor',items:[['sofa','Sofá 3 cuerpos',210,90,85],['sofa','Sofá 2 cuerpos',160,90,85],['sofa','Sillón',85,85,85],['table','Mesa de centro',110,60,45],['tv','Mueble TV',160,45,50],['table','Comedor 4 personas',120,80,75],['table','Comedor 6 personas',180,90,75],['chair','Silla',45,50,90],['shelf','Estante',90,35,190],['rug','Alfombra',200,140,1],['plant','Planta',45,45,120],['heater','Estufa a leña',60,50,90]]},
  {cat:'Cocina',items:[['counter','Mueble cocina',120,60,90],['stove','Cocina 4 platos',60,60,90],['fridge','Refrigerador',70,70,180],['washer','Lavadora',60,60,85],['counter','Isla',160,90,90]]},
  {cat:'Baño',items:[['toilet','WC',40,65,75],['sink','Lavamanos',55,45,85],['shower','Ducha',80,80,200],['tub','Tina',170,70,55]]},
  {cat:'Quincho y terraza',items:[['grill','Parrilla con campana',120,60,90],['bar','Barra',240,50,110],['stool','Piso de bar',40,40,75],['counter','Mesón quincho',150,60,90],['foosball','Taca-taca',140,75,90],['table','Mesa terraza',120,80,75],['sofa','Lounge exterior',160,80,75],['planter','Jardinera',120,45,45]]},
@@ -317,8 +317,8 @@ function normalize(o){
 function load(){try{const t=localStorage.getItem(STORE);if(t){const o=JSON.parse(t);if(o&&o.walls)return normalize(o)}}catch(e){}return null}
 function save(){if(DB)DB.plans[DB.cur]=S;try{localStorage.setItem(STORE2,JSON.stringify(DB))}catch(e){}}
 function loadDB(){
-  try{const t=localStorage.getItem(STORE2);if(t){const o=JSON.parse(t);if(o&&o.plans&&o.plans.actual){o.plans.actual=normalize(o.plans.actual);o.plans.proyeccion=(o.plans.proyeccion&&o.projVer===2)?normalize(o.plans.proyeccion):myProjection();o.projVer=2;if(!o.plans[o.cur])o.cur='proyeccion';return o}}}catch(e){}
-  const actual=load();const proy=myProjection();return {cur:'proyeccion',projVer:2,plans:{actual:actual||myHouse(),proyeccion:proy}};
+  try{const t=localStorage.getItem(STORE2);if(t){const o=JSON.parse(t);if(o&&o.plans&&o.plans.actual){o.plans.actual=normalize(o.plans.actual);o.plans.proyeccion=(o.plans.proyeccion&&o.projVer===3)?normalize(o.plans.proyeccion):myProjection();o.projVer=3;if(!o.plans[o.cur])o.cur='proyeccion';return o}}}catch(e){}
+  const actual=load();const proy=myProjection();return {cur:'proyeccion',projVer:3,plans:{actual:actual||myHouse(),proyeccion:proy}};
 }
 const PLANS={actual:'Casa actual',proyeccion:'Proyección'};
 
@@ -454,6 +454,37 @@ function myProjection(){
   I('planter','Jardinera',120,45,45,200,30,0);
   I('planter','Jardinera',120,45,45,33,220,90);
   [[30,320,50,90],[150,190,60,120],[260,120,45,70],[110,330,40,60]].forEach(([x,y,w,h])=>I('plant','Planta',w,w,h,x,y,0));
+  // Bodega → cocina abierta con isla
+  const bod=S.rooms.find(r=>r.name==='Bodega');
+  Object.assign(bod,{name:'Cocina nueva',floor:'porcelanato',color:FLOORS.porcelanato.color,note:'Ex bodega: cocina abierta con isla hacia el living'});
+  const ww=S.walls.find(w=>w.x1===300&&w.y1===365&&w.x2===300&&w.y2===695);
+  S.walls=S.walls.filter(w=>w!==ww);S.openings=S.openings.filter(o=>o.wallId!==ww.id);
+  S.items=S.items.filter(i=>!(i.x>300&&i.y>365&&i.y<695));
+  // Cerámica roja (hasta la puerta de la cocina) → living
+  const pl=S.rooms.find(r=>r.name==='Patio lateral');pl.y=950;pl.h=400;
+  S.rooms.push({id:uid(),name:'Living',x:0,y:365,w:300,h:585,floor:'madera',color:FLOORS.madera.color,note:'Ex cerámica roja: sala de estar con TV y estufa, ventanal al área verde'});
+  const NW=(x1,y1,x2,y2)=>S.walls.push({id:uid(),x1,y1,x2,y2,t:15,h:240,color:'#f2efe8',roomId:null,side:null});
+  NW(0,365,300,365);NW(0,950,300,950);
+  addOpeningAt('slider',150,365,280,{h:215});
+  addOpeningAt('door',150,950,90,{flipS:true});
+  // Cocina nueva
+  I('fridge','Refrigerador',70,70,180,725,412,90);
+  I('counter','Mueble cocina',120,60,90,735,507,90);
+  I('stove','Cocina 4 platos',60,60,90,735,597,90);
+  I('counter','Mueble cocina',60,60,90,735,657,90);
+  I('counter','Lavaplatos',200,60,90,560,657,180);
+  I('counter','Isla',220,90,92,300,530,90,'#d9d2c4');
+  [465,530,595].forEach(y=>I('stool','Piso de isla',40,40,75,232,y,0));
+  I('table','Comedor',160,90,75,525,470,0);
+  [485,565].forEach(x=>{I('chair','Silla',45,50,90,x,415,0);I('chair','Silla',45,50,90,x,525,180)});
+  // Living
+  I('rug','Alfombra',200,140,1,160,740,90);
+  I('sofa','Sofá 3 cuerpos',210,90,85,55,740,270);
+  I('table','Mesa de centro',110,60,40,160,740,90);
+  I('tv','Mueble TV + televisor',160,45,50,270,740,90);
+  I('heater','Estufa a leña',60,50,90,45,890,270);
+  I('sofa','Sillón',85,85,85,150,890,180);
+  I('plant','Planta',45,45,120,35,600,0);
   return S;
 }
 
@@ -517,6 +548,7 @@ function glyph(k,w,d){
     case 'bar':return L(x0,y0+d*.6,x0+w,y0+d*.6);
     case 'foosball':{let s=Rc(x0+6,y0+6,w-12,d-12);for(let i=1;i<8;i++)s+=L(x0+i*w/8,y0,x0+i*w/8,y0+d);return s}
     case 'planter':{let s='';const n=Math.max(1,Math.round(w/30));for(let i=0;i<n;i++)s+=C(x0+(i+.5)*w/n,0,Math.min(w/n,d)*.35);return s}
+    case 'heater':return Rc(x0+6,y0+d-10,w-12,6)+C(0,-d*.1,Math.min(w,d)*.18);
     case 'car':return Rc(x0+12,y0+d*.25,w-24,d*.18,8)+Rc(x0+12,y0+d*.62,w-24,d*.14,8);
     default:return '';
   }
@@ -550,6 +582,7 @@ function render2D(){
       const sweep=(sg*dir<0)?1:0;
       inner+=`<line class="opl" x1="${hx}" y1="${y1}" x2="${hx}" y2="${y2}" stroke-width="2" ${sw}/>
       <path class="opl" d="M${hx} ${y2} A${o.w} ${o.w} 0 0 ${sweep} ${hx+dir*o.w} ${y1}" stroke-width="1" stroke-dasharray="3 3" ${sw}/>`;
+    }else if(o.type==='slider'){inner+=`<rect class="opl" x="${-o.w/2}" y="${-t/2}" width="${o.w}" height="${t}" stroke-width="1" ${sw}/><line class="opl" x1="${-o.w/2}" y1="${-t/6}" x2="${o.w*.08}" y2="${-t/6}" stroke-width="1.8" ${sw}/><line class="opl" x1="${-o.w*.08}" y1="${t/6}" x2="${o.w/2}" y2="${t/6}" stroke-width="1.8" ${sw}/>`
     }else{inner+=`<rect class="opl" x="${-o.w/2}" y="${-t/2}" width="${o.w}" height="${t}" stroke-width="1" ${sw}/><line class="opl" x1="${-o.w/2}" y1="0" x2="${o.w/2}" y2="0" stroke-width="1.6" ${sw}/>`}
     inner+=`<rect x="${-o.w/2}" y="${-t/2-6/z}" width="${o.w}" height="${t+12/z}" fill="transparent"/>`;
     h+=`<g class="op${s?' sel':''}" data-k="op" data-id="${o.id}" transform="translate(${cx} ${cy}) rotate(${g.ang*180/Math.PI})">${inner}</g>`}
@@ -770,7 +803,7 @@ function renderPanel(){
       <li>Dibuja el ambiente y en el panel escribe la <b>medida interior</b>. El grosor se suma solo.</li>
       <li>Para puertas y ventanas anota el ancho y la distancia desde la esquina.</li>
       <li>Usa «Medir» para comprobar distancias en el plano.</li></ol></details>
-    <p class="note">${DB.cur==='proyeccion'?'Proyección: quincho techado con parrilla, mesón, barra y taca-taca; terraza con pérgola; y área verde con pasto y plantas, sin techo, en el cuadrado junto al quincho. Lo que cambies aquí no toca el plano «Casa actual».':'Medidas de tu casa tomadas del plano de regularización. El cobertizo y la zona de planchado quedaron como patio sin techo, y el ex dormitorio como bodega. El 2º piso de la vivienda existente no está dibujado en esos planos.'}</p>`;
+    <p class="note">${DB.cur==='proyeccion'?'Proyección: quincho techado con parrilla, mesón, barra y taca-taca; terraza con pérgola; área verde con pasto y plantas junto al quincho; la bodega pasa a cocina abierta con isla, y la cerámica roja hasta la puerta de la cocina pasa a living con TV, estufa y ventanal al área verde. Lo que cambies aquí no toca el plano «Casa actual».':'Medidas de tu casa tomadas del plano de regularización. El cobertizo y la zona de planchado quedaron como patio sin techo, y el ex dormitorio como bodega. El 2º piso de la vivienda existente no está dibujado en esos planos.'}</p>`;
   }else if(sel.k==='wall'){const g=wallGeom(el);let ang=-g.ang*180/Math.PI;if(ang<0)ang+=360;
     h+=`<div><div class="eyebrow">Muro</div><h2 class="num">${fmt(g.L)}</h2></div>
     <div class="fields">${num('len','Largo (cm)',g.L)}${num('ang','Ángulo (°)',ang,{step:1})}${num('t','Grosor (cm)',el.t)}${num('h','Altura (cm)',el.h)}${num('x1','Inicio X (cm)',el.x1)}${num('y1','Inicio Y (cm)',el.y1)}${col('color','Color',el.color)}</div>
@@ -795,8 +828,8 @@ function renderPanel(){
     <p class="note">«Interior» resta un muro de ${t} cm (la mitad a cada lado). Escribe ahí lo que mides con huincha.</p>
     <div class="row"><button class="btn danger" data-act="del">Eliminar ambiente</button></div>`;
   }else if(sel.k==='op'){const w=find('wall',el.wallId);
-    h+=`<div><div class="eyebrow">${el.type==='door'?'Puerta':'Ventana'}</div><h2 class="num">${fmt(el.w)} × ${fmt(el.h)}</h2></div>
-    <div class="fields">${num('w','Ancho (cm)',el.w)}${num('h','Alto (cm)',el.h)}
+    h+=`<div><div class="eyebrow">${el.type==='door'?'Puerta':el.type==='slider'?'Ventanal':'Ventana'}</div><h2 class="num">${fmt(el.w)} × ${fmt(el.h)}</h2></div>
+    <div class="fields"><div class="field full"><label for="f-otype">Tipo</label><select id="f-otype" data-f="otype"><option value="door"${el.type==='door'?' selected':''}>Puerta</option><option value="window"${el.type==='window'?' selected':''}>Ventana</option><option value="slider"${el.type==='slider'?' selected':''}>Ventanal corredero (piso a cielo)</option></select></div>${num('w','Ancho (cm)',el.w)}${num('h','Alto (cm)',el.h)}
       ${el.type==='window'?num('sill','Altura desde el piso (cm)',el.sill):''}
       ${num('dist','Distancia a la esquina (cm)',el.off-el.w/2)}
       ${w?`<div class="field"><label>Hasta la otra esquina</label><input class="num" value="${r1(wlen(w)-el.off-el.w/2)}" disabled></div>`:''}</div>
@@ -852,6 +885,7 @@ panel.addEventListener('change',e=>{
     else if(sel.k==='op'){const w=find('wall',el.wallId),L=w?wlen(w):999;
       if(f==='w')el.w=clamp(v,20,L-4);else if(f==='h')el.h=Math.max(10,v);else if(f==='sill')el.sill=Math.max(0,v);
       else if(f==='dist')el.off=v+el.w/2;
+      else if(f==='otype'){el.type=v;if(v!=='window')el.sill=0;else if(!el.sill)el.sill=100;if(v==='slider')el.h=Math.max(el.h,210)}
       el.off=clamp(el.off,el.w/2,L-el.w/2)}
     else if(sel.k==='item'){if(f==='name')el.name=v||'Mueble';else if(['w','d','h'].includes(f))el[f]=Math.max(1,v);else if(f==='rot')el.rot=((v%360)+360)%360;else el[f]=v}
   });
@@ -949,6 +983,7 @@ const B={
   foosball(g,W,D,H,c){const lx=W/2-.08,lz=D/2-.08;for(const [a,b] of [[1,1],[1,-1],[-1,1],[-1,-1]])bx(g,.07,H-.25,.07,a*lx,0,b*lz,shade(c,.8));
     bx(g,W,.25,D,0,H-.25,0,c);bx(g,W-.1,.01,D-.1,0,H-.06,0,'#2f7a3a');for(let i=1;i<8;i++){const m=cyl(g,.012,D+.3,-W/2+i*W/8,0,0,'#bbbbbb');m.rotation.x=Math.PI/2;m.position.y=H+.02}},
   planter(g,W,D,H,c){bx(g,W,H,D,0,0,0,c);const n=Math.max(1,Math.round(W/.3));for(let i=0;i<n;i++)sph(g,Math.min(W/n,D)*.5,-W/2+(i+.5)*W/n,H+.05,0,'#4f7a4a')},
+  heater(g,W,D,H,c){bx(g,W,H*.8,D,0,.12,0,c);for(const [a,b] of [[1,1],[1,-1],[-1,1],[-1,-1]])bx(g,.04,.12,.04,a*(W/2-.05),0,b*(D/2-.05),c);bx(g,W*.6,H*.4,.01,0,.3,D/2+.002,'#e07a2f',{emissive:'#a03a10',emissiveIntensity:.6});cyl(g,.07,2.3-H,0,H,-D*.1,'#333333')},
   car(g,W,D,H,c){bx(g,W,H*.5,D,0,.15,0,c);bx(g,W*.85,H*.38,D*.5,0,.15+H*.5,-D*.02,shade(c,.75));for(const [a,b] of [[1,1],[1,-1],[-1,1],[-1,-1]]){const m=cyl(g,.32,.2,a*(W/2-.1),0,b*(D/2-.7),'#222222');m.rotation.z=Math.PI/2;m.position.y=.32}},
 };
 const texCache={};
@@ -980,7 +1015,7 @@ function build3D(){
     let u=0;const piece=(u0,u1,y0,y1)=>{if(u1-u0>.002&&y1-y0>.002)bx(wg,u1-u0,y1-y0,t,(u0+u1)/2,y0,0,w.color)};
     for(const p of ops){piece(u,p.a,0,H);const o=p.o,top=(o.sill+o.h)/100,sill=o.sill/100;
       piece(p.a,p.b,Math.min(top,H),H);
-      if(o.type==='window'){piece(p.a,p.b,0,Math.min(sill,H));if(H>sill)bx(wg,p.b-p.a,Math.min(top,H)-sill,.01,(p.a+p.b)/2,sill,0,'#9cc9e4',{transparent:true,opacity:.3,roughness:.1})}
+      if(o.type!=='door'){piece(p.a,p.b,0,Math.min(sill,H));if(o.type==='slider'&&H>sill){const n=Math.max(2,Math.round((p.b-p.a)/.9));for(let i=1;i<n;i++)bx(wg,.04,Math.min(top,H)-sill,.06,p.a+i*(p.b-p.a)/n,sill,0,'#3a3a3a')}if(H>sill)bx(wg,p.b-p.a,Math.min(top,H)-sill,.01,(p.a+p.b)/2,sill,0,'#9cc9e4',{transparent:true,opacity:.3,roughness:.1})}
       else if(!cut||H>=top){const dir=o.flipH?-1:1,sg=o.flipS?-1:1,ow=p.b-p.a,hu=dir>0?p.a:p.b;
         const piv=new THREE.Group();piv.position.set(hu,0,sg*t/2);piv.rotation.y=-dir*sg*1.05;wg.add(piv);
         bx(piv,ow-.02,Math.min(top,H)-.01,.04,dir*ow/2,0,sg*.02,'#8a6a4c')}
