@@ -317,8 +317,8 @@ function normalize(o){
 function load(){try{const t=localStorage.getItem(STORE);if(t){const o=JSON.parse(t);if(o&&o.walls)return normalize(o)}}catch(e){}return null}
 function save(){if(DB)DB.plans[DB.cur]=S;try{localStorage.setItem(STORE2,JSON.stringify(DB))}catch(e){}}
 function loadDB(){
-  try{const t=localStorage.getItem(STORE2);if(t){const o=JSON.parse(t);if(o&&o.plans&&o.plans.actual){o.plans.actual=normalize(o.plans.actual);o.plans.proyeccion=(o.plans.proyeccion&&o.projVer===4)?normalize(o.plans.proyeccion):myProjection();o.projVer=4;if(!o.plans[o.cur])o.cur='proyeccion';return o}}}catch(e){}
-  const actual=load();const proy=myProjection();return {cur:'proyeccion',projVer:4,plans:{actual:actual||myHouse(),proyeccion:proy}};
+  try{const t=localStorage.getItem(STORE2);if(t){const o=JSON.parse(t);if(o&&o.plans&&o.plans.actual){o.plans.actual=normalize(o.plans.actual);o.plans.proyeccion=(o.plans.proyeccion&&o.projVer===5)?normalize(o.plans.proyeccion):myProjection();o.projVer=5;if(!o.plans[o.cur])o.cur='proyeccion';return o}}}catch(e){}
+  const actual=load();const proy=myProjection();return {cur:'proyeccion',projVer:5,plans:{actual:actual||myHouse(),proyeccion:proy}};
 }
 const PLANS={actual:'Casa actual',proyeccion:'Proyección'};
 
@@ -462,7 +462,7 @@ function myProjection(){
   S.items=S.items.filter(i=>!(i.x>300&&i.y>365&&i.y<695));
   // Cerámica roja (hasta la puerta de la cocina) → living
   const pl=S.rooms.find(r=>r.name==='Patio lateral');pl.y=950;pl.h=400;
-  S.rooms.push({id:uid(),name:'Living',x:0,y:365,w:300,h:585,floor:'madera',color:FLOORS.madera.color,note:'Ex cerámica roja: sala de estar con TV y estufa, ventanal al área verde'});
+  S.rooms.push({id:uid(),name:'Living',x:0,y:365,w:300,h:585,floor:'madera',color:FLOORS.madera.color,note:'Ex cerámica roja: sala de estar con TV y estufa, puerta corredera de vidrio al área verde'});
   const NW=(x1,y1,x2,y2)=>S.walls.push({id:uid(),x1,y1,x2,y2,t:15,h:240,color:'#f2efe8',roomId:null,side:null});
   NW(0,365,300,365);NW(0,950,300,950);
   addOpeningAt('slider',150,365,280,{h:215});
@@ -486,6 +486,7 @@ function myProjection(){
   I('sofa','Sillón',85,85,85,150,890,180);
   I('plant','Planta',45,45,120,35,600,0);
   S.rooms.find(r=>r.name==='Living').name='Sala de estar';
+  S.openings=S.openings.filter(o=>!(o.type==='door'&&S.walls.some(w=>w.id===o.wallId&&w.x1===300&&w.y1===365&&w.x2===775&&w.y2===365)));
   // Cocina antigua → comedor (se retira el muro hacia la escalera)
   const ck=S.rooms.find(r=>r.name==='Cocina');Object.assign(ck,{name:'Comedor',floor:'madera',color:FLOORS.madera.color,note:'Ex cocina antigua, abierta al living'});
   const kw=S.walls.find(w=>w.x1===300&&w.y1===932&&w.x2===520&&w.y2===932);S.walls=S.walls.filter(w=>w!==kw);
@@ -601,7 +602,7 @@ function render2D(){
       const sweep=(sg*dir<0)?1:0;
       inner+=`<line class="opl" x1="${hx}" y1="${y1}" x2="${hx}" y2="${y2}" stroke-width="2" ${sw}/>
       <path class="opl" d="M${hx} ${y2} A${o.w} ${o.w} 0 0 ${sweep} ${hx+dir*o.w} ${y1}" stroke-width="1" stroke-dasharray="3 3" ${sw}/>`;
-    }else if(o.type==='slider'){inner+=`<rect class="opl" x="${-o.w/2}" y="${-t/2}" width="${o.w}" height="${t}" stroke-width="1" ${sw}/><line class="opl" x1="${-o.w/2}" y1="${-t/6}" x2="${o.w*.08}" y2="${-t/6}" stroke-width="1.8" ${sw}/><line class="opl" x1="${-o.w*.08}" y1="${t/6}" x2="${o.w/2}" y2="${t/6}" stroke-width="1.8" ${sw}/>`
+    }else if(o.type==='slider'){inner+=`<rect class="opl" x="${-o.w/2}" y="${-t/2}" width="${o.w}" height="${t}" stroke-width="1" ${sw}/><line class="opl" x1="${-o.w/2}" y1="${-t/6}" x2="${o.w*.08}" y2="${-t/6}" stroke-width="1.8" ${sw}/><line class="opl" x1="${-o.w*.08}" y1="${t/6}" x2="${o.w/2}" y2="${t/6}" stroke-width="1.8" ${sw}/><path class="opl" d="M${-o.w*.2} ${-t/2-7/z}H${o.w*.2}M${o.w*.2-6/z} ${-t/2-11/z}L${o.w*.2} ${-t/2-7/z}L${o.w*.2-6/z} ${-t/2-3/z}" stroke-width="1.2" ${sw}/>`
     }else{inner+=`<rect class="opl" x="${-o.w/2}" y="${-t/2}" width="${o.w}" height="${t}" stroke-width="1" ${sw}/><line class="opl" x1="${-o.w/2}" y1="0" x2="${o.w/2}" y2="0" stroke-width="1.6" ${sw}/>`}
     inner+=`<rect x="${-o.w/2}" y="${-t/2-6/z}" width="${o.w}" height="${t+12/z}" fill="transparent"/>`;
     h+=`<g class="op${s?' sel':''}" data-k="op" data-id="${o.id}" transform="translate(${cx} ${cy}) rotate(${g.ang*180/Math.PI})">${inner}</g>`}
@@ -822,7 +823,7 @@ function renderPanel(){
       <li>Dibuja el ambiente y en el panel escribe la <b>medida interior</b>. El grosor se suma solo.</li>
       <li>Para puertas y ventanas anota el ancho y la distancia desde la esquina.</li>
       <li>Usa «Medir» para comprobar distancias en el plano.</li></ol></details>
-    <p class="note">${DB.cur==='proyeccion'?'Proyección: quincho techado con parrilla, mesón, barra y taca-taca; terraza con pérgola; área verde con pasto y plantas junto al quincho; la bodega pasa a cocina abierta con isla, la cerámica roja pasa a sala de estar con TV, estufa y ventanal al área verde; la cocina antigua pasa a comedor abierto al living de la escalera, que suma otra estufa; y la puerta y ventana de la cocina antigua se reemplazan por un ventanal corredero. Lo que cambies aquí no toca el plano «Casa actual».':'Medidas de tu casa tomadas del plano de regularización. El cobertizo y la zona de planchado quedaron como patio sin techo, y el ex dormitorio como bodega. El 2º piso de la vivienda existente no está dibujado en esos planos.'}</p>`;
+    <p class="note">${DB.cur==='proyeccion'?'Proyección: quincho techado con parrilla, mesón, barra y taca-taca; terraza con pérgola; área verde con pasto y plantas junto al quincho; la bodega pasa a cocina abierta con isla, la cerámica roja pasa a sala de estar con TV, estufa y puerta corredera de vidrio al área verde (la única salida al patio); la cocina antigua pasa a comedor abierto al living de la escalera, que suma otra estufa; y la puerta y ventana de la cocina antigua se reemplazan por una puerta corredera de vidrio. Lo que cambies aquí no toca el plano «Casa actual».':'Medidas de tu casa tomadas del plano de regularización. El cobertizo y la zona de planchado quedaron como patio sin techo, y el ex dormitorio como bodega. El 2º piso de la vivienda existente no está dibujado en esos planos.'}</p>`;
   }else if(sel.k==='wall'){const g=wallGeom(el);let ang=-g.ang*180/Math.PI;if(ang<0)ang+=360;
     h+=`<div><div class="eyebrow">Muro</div><h2 class="num">${fmt(g.L)}</h2></div>
     <div class="fields">${num('len','Largo (cm)',g.L)}${num('ang','Ángulo (°)',ang,{step:1})}${num('t','Grosor (cm)',el.t)}${num('h','Altura (cm)',el.h)}${num('x1','Inicio X (cm)',el.x1)}${num('y1','Inicio Y (cm)',el.y1)}${col('color','Color',el.color)}</div>
@@ -847,8 +848,8 @@ function renderPanel(){
     <p class="note">«Interior» resta un muro de ${t} cm (la mitad a cada lado). Escribe ahí lo que mides con huincha.</p>
     <div class="row"><button class="btn danger" data-act="del">Eliminar ambiente</button></div>`;
   }else if(sel.k==='op'){const w=find('wall',el.wallId);
-    h+=`<div><div class="eyebrow">${el.type==='door'?'Puerta':el.type==='slider'?'Ventanal':'Ventana'}</div><h2 class="num">${fmt(el.w)} × ${fmt(el.h)}</h2></div>
-    <div class="fields"><div class="field full"><label for="f-otype">Tipo</label><select id="f-otype" data-f="otype"><option value="door"${el.type==='door'?' selected':''}>Puerta</option><option value="window"${el.type==='window'?' selected':''}>Ventana</option><option value="slider"${el.type==='slider'?' selected':''}>Ventanal corredero (piso a cielo)</option></select></div>${num('w','Ancho (cm)',el.w)}${num('h','Alto (cm)',el.h)}
+    h+=`<div><div class="eyebrow">${el.type==='door'?'Puerta':el.type==='slider'?'Puerta corredera':'Ventana'}</div><h2 class="num">${fmt(el.w)} × ${fmt(el.h)}</h2></div>
+    <div class="fields"><div class="field full"><label for="f-otype">Tipo</label><select id="f-otype" data-f="otype"><option value="door"${el.type==='door'?' selected':''}>Puerta</option><option value="window"${el.type==='window'?' selected':''}>Ventana</option><option value="slider"${el.type==='slider'?' selected':''}>Puerta corredera de vidrio</option></select></div>${num('w','Ancho (cm)',el.w)}${num('h','Alto (cm)',el.h)}
       ${el.type==='window'?num('sill','Altura desde el piso (cm)',el.sill):''}
       ${num('dist','Distancia a la esquina (cm)',el.off-el.w/2)}
       ${w?`<div class="field"><label>Hasta la otra esquina</label><input class="num" value="${r1(wlen(w)-el.off-el.w/2)}" disabled></div>`:''}</div>
@@ -1034,7 +1035,7 @@ function build3D(){
     let u=0;const piece=(u0,u1,y0,y1)=>{if(u1-u0>.002&&y1-y0>.002)bx(wg,u1-u0,y1-y0,t,(u0+u1)/2,y0,0,w.color)};
     for(const p of ops){piece(u,p.a,0,H);const o=p.o,top=(o.sill+o.h)/100,sill=o.sill/100;
       piece(p.a,p.b,Math.min(top,H),H);
-      if(o.type!=='door'){piece(p.a,p.b,0,Math.min(sill,H));if(o.type==='slider'&&H>sill){const n=Math.max(2,Math.round((p.b-p.a)/.9));for(let i=1;i<n;i++)bx(wg,.04,Math.min(top,H)-sill,.06,p.a+i*(p.b-p.a)/n,sill,0,'#3a3a3a')}if(H>sill)bx(wg,p.b-p.a,Math.min(top,H)-sill,.01,(p.a+p.b)/2,sill,0,'#9cc9e4',{transparent:true,opacity:.3,roughness:.1})}
+      if(o.type!=='door'){piece(p.a,p.b,0,Math.min(sill,H));if(o.type==='slider'&&H>sill){const hh=Math.min(top,H)-sill,lw=(p.b-p.a)/2+.03,fc='#3a3a3a';[[p.a+lw/2,-.025],[p.b-lw/2,.025]].forEach(([cx,dz])=>{bx(wg,lw,.05,.05,cx,sill,dz,fc);bx(wg,lw,.05,.05,cx,sill+hh-.05,dz,fc);bx(wg,.05,hh,.05,cx-lw/2+.025,sill,dz,fc);bx(wg,.05,hh,.05,cx+lw/2-.025,sill,dz,fc);bx(wg,.025,.35,.03,cx+(dz<0?lw/2-.09:-lw/2+.09),sill+.9,dz+(dz<0?-.04:.04),'#c0c0c0')})}if(H>sill)bx(wg,p.b-p.a,Math.min(top,H)-sill,.01,(p.a+p.b)/2,sill,0,'#9cc9e4',{transparent:true,opacity:.3,roughness:.1})}
       else if(!cut||H>=top){const dir=o.flipH?-1:1,sg=o.flipS?-1:1,ow=p.b-p.a,hu=dir>0?p.a:p.b;
         const piv=new THREE.Group();piv.position.set(hu,0,sg*t/2);piv.rotation.y=-dir*sg*1.05;wg.add(piv);
         bx(piv,ow-.02,Math.min(top,H)-.01,.04,dir*ow/2,0,sg*.02,'#8a6a4c')}
